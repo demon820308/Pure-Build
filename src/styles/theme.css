@@ -1,0 +1,66 @@
+:root {
+  /* 基础主色调（默认翡翠蓝/天蓝，支持动态替换 HSL） */
+  --pcl-hue: 205;
+  --pcl-sat: 85%;
+  --pcl-light: 52%;
+
+  --pcl-color-primary: hsl(var(--pcl-hue), var(--pcl-sat), var(--pcl-light));
+  --pcl-color-hover: hsl(var(--pcl-hue), var(--pcl-sat), calc(var(--pcl-light) - 6%));
+  --pcl-color-active: hsl(var(--pcl-hue), var(--pcl-sat), calc(var(--pcl-light) - 12%));
+
+  /* 背景色与面板色 */
+  --pcl-color-bg: #f3f6f9;
+  --pcl-color-card: #ffffff;
+  --pcl-color-card-hover: #ffffff;
+  --pcl-color-border: rgba(0, 0, 0, 0.06);
+
+  /* 文字颜色 */
+  --pcl-color-text: #2c3e50;
+  --pcl-color-subtext: #7f8c8d;
+
+  /* 经典 PCL 弹性缓动曲线 */
+  --pcl-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --pcl-ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 暗色模式支持预留 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pcl-color-bg: #1a1e24;
+    --pcl-color-card: #222730;
+    --pcl-color-card-hover: #282f3a;
+    --pcl-color-border: rgba(255, 255, 255, 0.08);
+    --pcl-color-text: #ecf0f1;
+    --pcl-color-subtext: #95a5a6;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background-color: transparent;
+  color: var(--pcl-color-text);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
