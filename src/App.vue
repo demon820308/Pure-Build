@@ -202,11 +202,12 @@ const handleTitleBarMouseDown = (e: MouseEvent) => {
     <!-- ==================== 1A. 原版 PCL2 经典顶栏 (FormMain.xaml PanTitle 52px) ==================== -->
     <header
       v-if="store.uiStyle === 'classic'"
+      data-tauri-drag-region
       class="relative z-10 h-[52px] flex items-center justify-between px-5 bg-white dark:bg-[#1e232b] border-b border-black/8 dark:border-white/10 cursor-default shrink-0"
       @mousedown="handleTitleBarMouseDown"
     >
       <!-- 左侧：原版 ShapeTitleLogo 矢量线条 + PCL 字样；若在二级版本设置页则显示 PanTitleInner 返回栏 -->
-      <div class="flex items-center gap-2.5">
+      <div data-tauri-drag-region class="flex items-center gap-2.5">
         <template v-if="store.currentTab === 'instance'">
           <button
             class="w-7 h-7 rounded-full flex items-center justify-center text-[#1D1D1F] dark:text-gray-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
@@ -215,7 +216,7 @@ const handleTitleBarMouseDown = (e: MouseEvent) => {
           >
             <PclIcon name="back" :size="14" />
           </button>
-          <span class="text-[15px] font-medium text-[#1D1D1F] dark:text-gray-100">
+          <span class="text-[15px] font-medium text-[#1D1D1F] dark:text-gray-100 pointer-events-none">
             版本选择与管理 ({{ store.currentVersion?.name || '全部实例' }})
           </span>
         </template>
@@ -300,10 +301,11 @@ const handleTitleBarMouseDown = (e: MouseEvent) => {
     <!-- ==================== 1B. 现代 PBL 顶栏 (40px) ==================== -->
     <header
       v-else
+      data-tauri-drag-region
       class="relative z-10 h-10 flex items-center justify-between px-4 bg-pcl-card border-b border-pcl-border cursor-default shrink-0"
       @mousedown="handleTitleBarMouseDown"
     >
-      <div class="flex items-center gap-2 text-xs font-semibold text-pcl-text pointer-events-none">
+      <div data-tauri-drag-region class="flex items-center gap-2 text-xs font-semibold text-pcl-text pointer-events-none">
         <img
           src="/favicon.png"
           alt="PBL"

@@ -570,25 +570,33 @@ export const backend = {
   // 窗口操作
   async minimizeWindow() {
     try {
-      await getCurrentWindow().minimize()
+      await invoke('minimize_window')
     } catch {
-      console.log('Window minimize')
+      try {
+        await getCurrentWindow().minimize()
+      } catch (e) {
+        console.warn('最小化窗口失败:', e)
+      }
     }
   },
 
   async closeWindow() {
     try {
-      await getCurrentWindow().close()
+      await invoke('close_window')
     } catch {
-      console.log('Window close')
+      try {
+        await getCurrentWindow().close()
+      } catch (e) {
+        console.warn('关闭窗口失败:', e)
+      }
     }
   },
 
   async startDragging() {
     try {
       await getCurrentWindow().startDragging()
-    } catch {
-      // 浏览器环境不支持
+    } catch (e) {
+      // 浏览器环境不支持或已由 data-tauri-drag-region 接管
     }
   },
 }

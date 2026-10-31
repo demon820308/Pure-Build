@@ -314,6 +314,16 @@ fn clean_game_temp_cache(game_dir: String) -> Result<CacheCleanResult, String> {
     LinkManager::clean_game_temp_cache(&game_dir)
 }
 
+#[tauri::command]
+fn minimize_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn close_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -358,7 +368,9 @@ pub fn run() {
             broadcast_lan_room,
             decode_lan_invite_code,
             ping_download_endpoints,
-            clean_game_temp_cache
+            clean_game_temp_cache,
+            minimize_window,
+            close_window
         ])
         .setup(|app| {
             // 注入 Tauri 标准 app_config_dir（遵循规范 §2）

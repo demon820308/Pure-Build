@@ -1,9 +1,12 @@
 # Pure Build Launcher (Vue 3 + Tauri 2 + Rust)
 
-跨平台 Min**raft 启动器（Tauri 2 + Vue 3 / TypeScript + Rust `pcl-base`），支持 Windows、macOS（Apple Silicon `arm64` 与 Intel `x86_64`）及 Linux。
+跨平台 Minecraft 启动器（Tauri 2 + Vue 3 / TypeScript + Rust `pcl-base`），支持 Windows、macOS（Apple Silicon `arm64` 与 Intel `x86_64`）及 Linux。
 
-### Mac
+### macOS 首次运行解除 Gatekeeper 隔离
+由于开源 GitHub Actions 产物未包含付费的 Apple Developer 证书，在他人 Mac 上下载安装后，首次打开若遇系统安全提示，运行以下命令即可正常启动：
 ```bash
+xattr -cr "/Applications/Pure Build Launcher.app"
+# 或在当前解压目录下运行：
 xattr -cr "Pure Build Launcher.app"
 ```
 
