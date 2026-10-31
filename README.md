@@ -2,6 +2,9 @@
 
 跨平台 Min**raft 启动器（Tauri 2 + Vue 3 / TypeScript + Rust `pcl-base`），支持 Windows、macOS（Apple Silicon `arm64` 与 Intel `x86_64`）及 Linux。
 
+mac
+xattr -cr "Pure Build Launcher.app"
+
 ## 开发与构建
 
 ### 环境依赖
