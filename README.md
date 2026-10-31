@@ -4,7 +4,7 @@
 
 ### Mac
 ```bash
-xattr -cr "Pure Build Launcher.app"
+xattr -cr "Pure Build Launcher.app
 ```
 
 ## 开发与构建
