@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Plain Craft Launcher 2",
+  "productName": "Pure Build Launcher",
   "version": "0.1.0",
   "identifier": "com.pcl.tcl",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Plain Craft Launcher 2",
+        "title": "Pure Build Launcher",
         "width": 900,
         "height": 620,
         "minWidth": 760,

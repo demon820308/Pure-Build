@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { useAppStore } from '@/stores/app'
 import MyButton from '@/components/base/MyButton.vue'
+import MyListItem from '@/components/base/MyListItem.vue'
 import { backend } from '@/services/backend'
-import type { RemoteVersion, DownloadProgress, ModrinthProject } from '@/services/backend'
-import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
+import type { RemoteVersion, ModrinthProject } from '@/services/backend'
+import { ref, onMounted, computed, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 
 const store = useAppStore()
 
-// 当前主分类：'game' (官方游戏核心) | 'mod' (模组) | 'shader' (光影包) | 'resourcepack' (材质包)
-const currentSection = ref<'game' | 'mod' | 'shader' | 'resourcepack'>('game')
+// 当前主分类：'game' (官方游戏核心) | 'mod' (模组) | 'modpack' (整合包) | 'shader' (光影包) | 'resourcepack' (材质包)
+const currentSection = ref<'game' | 'mod' | 'modpack' | 'shader' | 'resourcepack'>('game')
 
 // ==================== 1. 官方原版游戏状态 ====================
 const versions = ref<RemoteVersion[]>([])
@@ -24,9 +25,17 @@ const communitySearchQuery = ref('')
 const selectedLoader = ref<'all' | 'fabric' | 'forge' | 'neoforge'>('all')
 const filterByCurrentVersion = ref(true) // 是否仅筛选匹配当前选定 Minecraft 版本的资源
 
-// 全局下载进度跟踪
-const currentTask = ref<DownloadProgress | null>(null)
-let unlistenFn: (() => void) | null = null
+// 智能判定某版本是否正在下载/安装中（支持纯净版本、Loader后缀版本、自定义命名、服务端与另存为）
+const isVersionDownloading = (vId: string) => {
+  const task = store.downloadTask
+  if (!task) return false
+  return (
+    task.version_id === vId ||
+    task.vanilla_version === vId ||
+    task.version_id.startsWith(`${vId}-`) ||
+    task.version_id.startsWith(`${vId} `)
+  )
+}
 
 // 加载官方版本
 const loadRemoteVersions = async () => {
@@ -50,9 +59,9 @@ const searchCommunity = async () => {
 
     const results = await backend.searchModrinthResources({
       query: communitySearchQuery.value,
-      projectType: currentSection.value as 'mod' | 'shader' | 'resourcepack',
+      projectType: currentSection.value as 'mod' | 'modpack' | 'shader' | 'resourcepack',
       gameVersion: targetVer,
-      loader: currentSection.value === 'mod' ? selectedLoader.value : undefined,
+      loader: currentSection.value === 'mod' || currentSection.value === 'modpack' ? selectedLoader.value : undefined,
     })
     communityProjects.value = results
   } catch (err: any) {
@@ -97,23 +106,9 @@ const goToLaunch = (versionId: string) => {
   store.currentTab = 'launch'
 }
 
-onMounted(async () => {
+onMounted(() => {
   store.refreshInstalledVersions()
   loadRemoteVersions()
-
-  unlistenFn = await backend.onDownloadProgress((p) => {
-    currentTask.value = p
-    if (p.is_finished) {
-      store.refreshInstalledVersions()
-      setTimeout(() => {
-        currentTask.value = null
-      }, 3500)
-    }
-  })
-})
-
-onUnmounted(() => {
-  if (unlistenFn) unlistenFn()
 })
 
 const filteredVersions = computed(() => {
@@ -294,13 +289,14 @@ const startInstallFromConfig = async () => {
   configuringVersion.value = null // 返回列表并开始任务
 
   try {
-    currentTask.value = {
+    store.updateDownloadProgress({
       version_id: targetName,
+      vanilla_version: v.id,
       step: '正在初始化安装任务...',
       percentage: 5,
       speed_text: '连接中',
       is_finished: false,
-    }
+    })
     await backend.startInstallVersion({
       gameDir: store.gameDir,
       vanillaVersion: v.id,
@@ -311,7 +307,7 @@ const startInstallFromConfig = async () => {
     })
   } catch (err: any) {
     alert(`安装失败: ${err}`)
-    currentTask.value = null
+    store.clearDownloadTask()
   }
 }
 
@@ -328,13 +324,14 @@ const handleSaveAs = async (v: RemoteVersion) => {
     })
     if (!selected) return
 
-    currentTask.value = {
+    store.updateDownloadProgress({
       version_id: `${v.id}-saveas`,
+      vanilla_version: v.id,
       step: '正在初始化独立版本另存为...',
       percentage: 5,
       speed_text: '连接中',
       is_finished: false,
-    }
+    })
 
     await backend.startInstallVersion({
       gameDir: selected as string,
@@ -344,7 +341,7 @@ const handleSaveAs = async (v: RemoteVersion) => {
     })
   } catch (err: any) {
     alert(`另存为失败: ${err}`)
-    currentTask.value = null
+    store.clearDownloadTask()
   }
 }
 
@@ -384,40 +381,42 @@ const handleDownloadServer = async (v: RemoteVersion) => {
     })
     if (!selected) return
 
-    currentTask.value = {
+    store.updateDownloadProgress({
       version_id: `${v.id}-server`,
+      vanilla_version: v.id,
       step: '正在准备下载 Minecraft 官方服务端...',
       percentage: 5,
       speed_text: '连接中',
       is_finished: false,
-    }
+    })
 
-    await backend.downloadMinecraftServer({
+    const scriptName = await backend.downloadMinecraftServer({
       targetDir: selected as string,
       versionId: v.id,
       metaUrl: v.url,
     })
 
-    alert(`Minecraft ${v.id} 官方服务端已成功下载到：\n${selected}\n包含配套脚本【启动服务端.bat】与 eula.txt，双击即可开服！`)
+    alert(`Minecraft ${v.id} 官方服务端已成功下载到：\n${selected}\n包含配套脚本【${scriptName}】与 eula.txt，运行该脚本即可开服！`)
   } catch (err: any) {
     alert(`下载服务端失败: ${err}`)
-    currentTask.value = null
+    store.clearDownloadTask()
   }
 }
 
 // 下载社区资源 (Mod / 光影 / 材质)
 const handleInstallCommunity = async (proj: ModrinthProject) => {
   try {
-    currentTask.value = {
+    const targetVer = store.currentVersion ? store.currentVersion.id.replace(/-.*$/, '') : undefined
+    const targetLoader = store.currentVersion?.loader || 'fabric'
+
+    store.updateDownloadProgress({
       version_id: proj.project_id,
+      vanilla_version: targetVer,
       step: `准备下载 ${proj.title}...`,
       percentage: 5,
       speed_text: '请求中',
       is_finished: false,
-    }
-
-    const targetVer = store.currentVersion ? store.currentVersion.id.replace(/-.*$/, '') : undefined
-    const targetLoader = store.currentVersion?.loader || 'fabric'
+    })
 
     const msg = await backend.installModrinthResource({
       gameDir: store.gameDir,
@@ -431,62 +430,135 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
     console.log(msg)
   } catch (err: any) {
     alert(`安装失败: ${err}`)
-    currentTask.value = null
+    store.clearDownloadTask()
   }
 }
 </script>
 
 <template>
-  <div class="h-full flex flex-col gap-3.5 overflow-hidden relative">
-    <!-- 顶部主分类导航栏 (PCL2 经典双层下载切换) -->
-    <div class="flex items-center justify-between gap-4 shrink-0 pb-1 border-b border-pcl-border/60">
+  <div class="h-full flex overflow-hidden relative" :class="store.uiStyle === 'classic' ? 'flex-row gap-0' : 'flex-col gap-3.5'">
+    <!-- ==================== 1A. 原版 PCL2 经典左侧 152px 菜单栏 (PageDownloadLeft.xaml) ==================== -->
+    <div
+      v-if="store.uiStyle === 'classic'"
+      class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
+    >
+      <MyListItem
+        title="原版游戏"
+        icon="vanilla"
+        :checked="currentSection === 'game'"
+        action-title="刷新版本列表"
+        @click="currentSection = 'game'; configuringVersion = null"
+        @action="loadRemoteVersions"
+      />
+
+      <div class="px-3.5 pt-5 pb-1 text-[12px] text-[#737373] opacity-80">
+        社区资源
+      </div>
+
+      <MyListItem
+        title="Mod"
+        icon="mod"
+        :checked="currentSection === 'mod'"
+        action-title="刷新 Mod 列表"
+        @click="currentSection = 'mod'"
+        @action="searchCommunity"
+      />
+      <MyListItem
+        title="整合包"
+        icon="modpack"
+        :checked="currentSection === 'modpack'"
+        action-title="刷新整合包列表"
+        @click="currentSection = 'modpack'"
+        @action="searchCommunity"
+      />
+      <MyListItem
+        title="资源包"
+        icon="resourcepack"
+        :checked="currentSection === 'resourcepack'"
+        action-title="刷新资源包列表"
+        @click="currentSection = 'resourcepack'"
+        @action="searchCommunity"
+      />
+      <MyListItem
+        title="光影包"
+        icon="shader"
+        :checked="currentSection === 'shader'"
+        action-title="刷新光影包列表"
+        @click="currentSection = 'shader'"
+        @action="searchCommunity"
+      />
+    </div>
+
+    <!-- 右侧主内容区容器 -->
+    <div
+      class="flex-1 h-full flex flex-col gap-3.5 overflow-hidden relative"
+      :class="store.uiStyle === 'classic' && 'p-5'"
+    >
+    <!-- 顶部主分类导航栏 (仅现代模式显示，经典模式由左侧 152px 栏承载) -->
+    <div
+      v-if="store.uiStyle === 'modern'"
+      class="flex items-center justify-between gap-3 shrink-0 pb-1 border-b border-pcl-border/60"
+    >
       <!-- 大类切换 Pill 标签 -->
-      <div class="flex items-center gap-1.5 p-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-pcl-border">
+      <div class="flex items-center gap-1 p-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0 overflow-x-auto no-scrollbar">
         <button
-          class="px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
           :class="currentSection === 'game' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="currentSection = 'game'"
         >
           <span>💎</span>
-          <span>官方游戏核心</span>
+          <span>原版游戏</span>
         </button>
 
         <button
-          class="px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
           :class="currentSection === 'mod' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="currentSection = 'mod'"
         >
           <span>🧩</span>
-          <span>社区模组 (Mod)</span>
+          <span>社区Mod</span>
         </button>
 
         <button
-          class="px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
+          :class="currentSection === 'modpack' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
+          @click="currentSection = 'modpack'"
+        >
+          <span>📦</span>
+          <span>整合包</span>
+        </button>
+
+        <button
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
           :class="currentSection === 'shader' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="currentSection = 'shader'"
         >
           <span>✨</span>
-          <span>光影包 (Shaders)</span>
+          <span>光影包</span>
         </button>
 
         <button
-          class="px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5"
+          class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
           :class="currentSection === 'resourcepack' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="currentSection = 'resourcepack'"
         >
           <span>🎨</span>
-          <span>材质包 (Textures)</span>
+          <span>材质包</span>
         </button>
       </div>
 
       <!-- 右侧附加状态提示 -->
-      <div class="text-xs text-pcl-subtext flex items-center gap-2">
-        <span v-if="store.currentVersion" class="px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 font-mono text-[11px]">
-          当前版本: {{ store.currentVersion.name }}
+      <div class="text-xs text-pcl-subtext flex items-center gap-2 shrink-0 whitespace-nowrap min-w-0">
+        <span
+          v-if="store.currentVersion"
+          class="px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 font-mono text-[11px] max-w-[150px] truncate shrink-0"
+          :title="`当前版本: ${store.currentVersion.name}`"
+        >
+          {{ store.currentVersion.name }}
         </span>
-        <span class="text-emerald-500 flex items-center gap-1 text-[11px]">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-          Modrinth & BMCLAPI 在线
+        <span class="text-emerald-500 flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+          <span>Modrinth & BMCLAPI 在线</span>
         </span>
       </div>
     </div>
@@ -494,29 +566,29 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
     <!-- ==================== 视图 A: 官方游戏版本中心 ==================== -->
     <template v-if="currentSection === 'game'">
       <!-- 搜索栏与过滤开关 -->
-      <div class="flex items-center justify-between gap-4 shrink-0">
-        <div class="text-xs text-pcl-subtext">
+      <div class="flex items-center justify-between gap-3 shrink-0 flex-wrap">
+        <div class="text-xs text-pcl-subtext whitespace-nowrap shrink-0">
           已检索到 {{ versions.length }} 个版本 · 已安装 {{ store.installedVersions.length }} 个
         </div>
 
-        <div class="flex items-center gap-2">
-          <div class="flex items-center p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs">
+        <div class="flex items-center gap-2 flex-1 max-w-md justify-end min-w-0">
+          <div class="flex items-center p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs shrink-0 whitespace-nowrap">
             <button
-              class="px-3 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="filterType === 'release' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="filterType = 'release'"
             >
               正式版
             </button>
             <button
-              class="px-3 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="filterType === 'snapshot' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="filterType = 'snapshot'"
             >
               快照版
             </button>
             <button
-              class="px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+              class="px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0"
               :class="filterType === 'installed' ? 'bg-pcl-card text-pcl-primary font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="filterType = 'installed'"
             >
@@ -526,7 +598,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
               </span>
             </button>
             <button
-              class="px-3 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-3 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="filterType === 'all' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="filterType = 'all'"
             >
@@ -537,7 +609,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
           <input
             v-model="gameSearchQuery"
             placeholder="搜索版本号 (如 1.21.4)..."
-            class="px-3.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors w-40"
+            class="px-3.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors w-36 min-w-[90px]"
           />
 
           <MyButton type="secondary" size="small" :loading="isLoadingVersions" @click="loadRemoteVersions">
@@ -778,12 +850,12 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
         <!-- 底部胶囊按钮 (对齐原版 PCL 图 4：居中深灰蓝/暗色胶囊按钮) -->
         <div class="sticky bottom-1 flex items-center justify-center pt-3 pb-2 select-none">
           <button
-            :disabled="isNameConflict"
+            :disabled="isNameConflict || store.isDownloading"
             class="px-8 py-2.5 rounded-2xl text-xs font-bold cursor-pointer bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-white shadow-xl transition-all duration-200 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             @click="startInstallFromConfig"
           >
-            <span class="text-sm">📥</span>
-            <span>开始下载</span>
+            <span class="text-sm">{{ store.isDownloading ? '⏳' : '📥' }}</span>
+            <span>{{ store.isDownloading ? `正在下载 (${store.downloadTask?.percentage.toFixed(0)}%)` : '开始下载' }}</span>
           </button>
         </div>
       </div>
@@ -800,7 +872,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
           :key="v.id"
           class="flex flex-col p-3.5 rounded-2xl border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
           :class="[
-            currentTask?.version_id === v.id
+            isVersionDownloading(v.id)
               ? 'border-pcl-primary bg-pcl-primary/5 ring-2 ring-pcl-primary/20'
               : 'border-pcl-border bg-pcl-card shadow-sm'
           ]"
@@ -863,11 +935,11 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
               </div>
 
               <div
-                v-if="currentTask?.version_id === v.id || currentTask?.version_id === `${v.id}-saveas` || currentTask?.version_id === `${v.id}-server`"
+                v-if="isVersionDownloading(v.id) && store.downloadTask"
                 class="flex items-center gap-2 text-xs font-bold text-pcl-primary px-3 py-1.5 rounded-xl bg-pcl-primary/10 animate-pulse"
               >
                 <span class="animate-spin text-sm">⏳</span>
-                <span>{{ currentTask.percentage.toFixed(0) }}% {{ currentTask.speed_text }}</span>
+                <span>{{ store.downloadTask.percentage.toFixed(0) }}% {{ store.downloadTask.speed_text }}</span>
               </div>
               <template v-else-if="isInstalled(v.id)">
                 <button
@@ -878,7 +950,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
                   <span>前往启动</span>
                 </button>
                 <button
-                  :disabled="currentTask !== null"
+                  :disabled="store.isDownloading"
                   class="px-2.5 py-1.5 rounded-xl text-xs text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
                   title="重新配置并安装此版本"
                   @click="openVersionConfig(v)"
@@ -888,7 +960,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
               </template>
               <template v-else>
                 <button
-                  :disabled="currentTask !== null"
+                  :disabled="store.isDownloading"
                   class="px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active text-white shadow-sm transition-all duration-200 ease-[var(--pcl-ease-bounce)] active:scale-95 disabled:opacity-50"
                   @click="openVersionConfig(v)"
                 >
@@ -899,13 +971,13 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
           </div>
 
           <!-- 卡片内联微进度条 -->
-          <div v-if="currentTask?.version_id === v.id" class="mt-3 pt-2 border-t border-pcl-border/40 flex flex-col gap-1.5">
+          <div v-if="isVersionDownloading(v.id) && store.downloadTask" class="mt-3 pt-2 border-t border-pcl-border/40 flex flex-col gap-1.5">
             <div class="w-full h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
-              <div class="h-full bg-pcl-primary transition-all duration-300 ease-out rounded-full" :style="{ width: `${currentTask.percentage}%` }" />
+              <div class="h-full bg-pcl-primary transition-all duration-300 ease-out rounded-full" :style="{ width: `${store.downloadTask.percentage}%` }" />
             </div>
             <div class="text-[11px] text-pcl-primary flex items-center justify-between">
-              <span>{{ currentTask.step }}</span>
-              <span>{{ currentTask.speed_text }}</span>
+              <span>{{ store.downloadTask.step }}</span>
+              <span>{{ store.downloadTask.speed_text }}</span>
             </div>
           </div>
         </div>
@@ -915,39 +987,46 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
     <!-- ==================== 视图 B: Modrinth 社区资源 (Mod/光影/材质) ==================== -->
     <template v-else>
       <!-- 搜索栏与过滤工具 -->
-      <div class="flex items-center justify-between gap-4 shrink-0">
-        <div class="flex items-center gap-2">
+      <div class="flex items-center justify-between gap-3 shrink-0 flex-wrap">
+        <div class="flex items-center gap-2 shrink-0 flex-wrap">
           <!-- 针对当前版本匹配开关 -->
-          <label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text cursor-pointer hover:border-pcl-primary select-none">
-            <input v-model="filterByCurrentVersion" type="checkbox" class="accent-[var(--pcl-color-primary)] cursor-pointer" />
-            <span class="font-medium text-[11px]">匹配当前版本 ({{ store.currentVersion?.name || '未选' }})</span>
+          <label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text cursor-pointer hover:border-pcl-primary select-none whitespace-nowrap shrink-0">
+            <input v-model="filterByCurrentVersion" type="checkbox" class="accent-[var(--pcl-color-primary)] cursor-pointer shrink-0" />
+            <span class="font-medium text-[11px] whitespace-nowrap">匹配当前版本</span>
+            <span
+              v-if="store.currentVersion"
+              class="text-[10px] text-pcl-subtext max-w-[110px] truncate font-mono"
+              :title="store.currentVersion.name"
+            >
+              ({{ store.currentVersion.name }})
+            </span>
           </label>
 
           <!-- Mod Loader 选择器 (仅在 Mod 分类时显示) -->
-          <div v-if="currentSection === 'mod'" class="flex items-center p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs">
+          <div v-if="currentSection === 'mod'" class="flex items-center p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs shrink-0 whitespace-nowrap">
             <button
-              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="selectedLoader === 'all' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="selectedLoader = 'all'"
             >
               全部
             </button>
             <button
-              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="selectedLoader === 'fabric' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="selectedLoader = 'fabric'"
             >
               Fabric
             </button>
             <button
-              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="selectedLoader === 'forge' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="selectedLoader = 'forge'"
             >
               Forge
             </button>
             <button
-              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+              class="px-2.5 py-1 rounded-lg transition-all cursor-pointer whitespace-nowrap shrink-0"
               :class="selectedLoader === 'neoforge' ? 'bg-pcl-card text-pcl-text font-bold shadow-sm' : 'text-pcl-subtext hover:text-pcl-text'"
               @click="selectedLoader = 'neoforge'"
             >
@@ -957,11 +1036,11 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
         </div>
 
         <!-- 关键词搜索框 -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-1 max-w-sm justify-end min-w-0">
           <input
             v-model="communitySearchQuery"
             :placeholder="`在 Modrinth 搜索${currentSection === 'mod' ? '模组 (如 Sodium, JEI)' : currentSection === 'shader' ? '光影 (如 Complementary)' : '材质包'}...`"
-            class="px-3.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors w-64"
+            class="px-3.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors flex-1 min-w-[120px] max-w-xs"
             @keyup.enter="searchCommunity"
           />
           <MyButton type="primary" size="small" :loading="isLoadingCommunity" @click="searchCommunity">
@@ -987,7 +1066,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
           :key="p.project_id"
           class="flex flex-col p-4 rounded-2xl border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
           :class="[
-            currentTask?.version_id === p.project_id
+            store.downloadTask?.version_id === p.project_id
               ? 'border-pcl-primary bg-pcl-primary/5 ring-2 ring-pcl-primary/20'
               : 'border-pcl-border bg-pcl-card shadow-sm'
           ]"
@@ -1037,17 +1116,17 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
             <!-- 右侧一键安装按钮 -->
             <div class="shrink-0 flex items-center">
               <div
-                v-if="currentTask?.version_id === p.project_id"
+                v-if="store.downloadTask?.version_id === p.project_id"
                 class="flex items-center gap-2 text-xs font-bold text-pcl-primary px-3 py-1.5 rounded-xl bg-pcl-primary/10 animate-pulse"
               >
                 <span class="animate-spin text-sm">⏳</span>
-                <span>{{ currentTask.percentage.toFixed(0) }}%</span>
+                <span>{{ store.downloadTask.percentage.toFixed(0) }}% {{ store.downloadTask.speed_text }}</span>
               </div>
 
               <button
                 v-else
-                :disabled="currentTask !== null"
-                class="px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active text-white shadow-sm transition-all duration-200 ease-[var(--pcl-ease-bounce)] active:scale-95 disabled:opacity-50"
+                :disabled="store.isDownloading"
+                class="px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active text-white shadow-sm transition-all duration-200 ease-[var(--pcl-ease-bounce)] active:scale-95 disabled:opacity-50 whitespace-nowrap shrink-0"
                 @click="handleInstallCommunity(p)"
               >
                 📥 一键安装到 {{ currentSection === 'mod' ? 'Mods' : currentSection === 'shader' ? 'Shaders' : 'Textures' }}
@@ -1056,13 +1135,13 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
           </div>
 
           <!-- 卡片内联微进度条 -->
-          <div v-if="currentTask?.version_id === p.project_id" class="mt-3 pt-2 border-t border-pcl-border/40 flex flex-col gap-1.5">
+          <div v-if="store.downloadTask?.version_id === p.project_id" class="mt-3 pt-2 border-t border-pcl-border/40 flex flex-col gap-1.5">
             <div class="w-full h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
-              <div class="h-full bg-pcl-primary transition-all duration-300 ease-out rounded-full" :style="{ width: `${currentTask.percentage}%` }" />
+              <div class="h-full bg-pcl-primary transition-all duration-300 ease-out rounded-full" :style="{ width: `${store.downloadTask.percentage}%` }" />
             </div>
             <div class="text-[11px] text-pcl-primary flex items-center justify-between">
-              <span>{{ currentTask.step }}</span>
-              <span>{{ currentTask.speed_text }}</span>
+              <span>{{ store.downloadTask.step }}</span>
+              <span>{{ store.downloadTask.speed_text }}</span>
             </div>
           </div>
         </div>
@@ -1131,6 +1210,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
           </button>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </template>

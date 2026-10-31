@@ -1,3 +1,4 @@
+use crate::endpoints::{LAUNCHER_USER_AGENT, MODRINTH_API_BASE};
 use crate::installer::DownloadProgress;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
@@ -67,7 +68,7 @@ impl CommunityManager {
     ) -> Result<Vec<ModrinthProject>, String> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
-            .user_agent("PlainCraftLauncher/2.0 (Vue3+Tauri)")
+            .user_agent(LAUNCHER_USER_AGENT)
             .build()
             .map_err(|e| e.to_string())?;
 
@@ -87,9 +88,10 @@ impl CommunityManager {
         }
 
         let facets_param = format!("[{}]", facets_arr.join(","));
+        let search_url = format!("{}/search", MODRINTH_API_BASE);
 
         let mut req = client
-            .get("https://api.modrinth.com/v2/search")
+            .get(&search_url)
             .query(&[("limit", "25"), ("facets", &facets_param)]);
 
         if !query.trim().is_empty() {
@@ -138,30 +140,31 @@ impl CommunityManager {
         game_version: Option<String>,
         loader: Option<String>,
     ) -> Result<String, String> {
-        let emit_progress = |step: &str, pct: f32, speed: &str, finished: bool, err: Option<String>| {
-            let _ = app.emit(
-                "download_progress",
-                DownloadProgress {
-                    version_id: project_id.clone(),
-                    step: step.to_string(),
-                    percentage: pct,
-                    speed_text: speed.to_string(),
-                    is_finished: finished,
-                    error: err,
-                },
-            );
-        };
+        let emit_progress =
+            |step: &str, pct: f32, speed: &str, finished: bool, err: Option<String>| {
+                let _ = app.emit(
+                    "download_progress",
+                    DownloadProgress {
+                        version_id: project_id.clone(),
+                        vanilla_version: game_version.clone(),
+                        step: step.to_string(),
+                        percentage: pct,
+                        speed_text: speed.to_string(),
+                        is_finished: finished,
+                        error: err,
+                    },
+                );
+            };
 
         emit_progress("正在获取该资源的匹配版本...", 10.0, "解析版本", false, None);
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
-            .user_agent("PlainCraftLauncher/2.0 (Vue3+Tauri)")
+            .user_agent(LAUNCHER_USER_AGENT)
             .build()
             .map_err(|e| e.to_string())?;
 
-        // 构造查询版本列表的请求
-        let ver_url = format!("https://api.modrinth.com/v2/project/{}/version", project_id);
+        let ver_url = format!("{}/project/{}/version", MODRINTH_API_BASE, project_id);
         let mut query_params: Vec<(&str, String)> = Vec::new();
 
         if let Some(ref gv) = game_version {
@@ -189,10 +192,8 @@ impl CommunityManager {
             .await
             .map_err(|e| format!("解析版本列表失败: {}", e))?;
 
-        // 如果带特定 loader/版本筛选没搜到，再尝试不带参数检索全量版本取第一个兼容项
         if versions.is_empty() {
-            let fallback_url = format!("https://api.modrinth.com/v2/project/{}/version", project_id);
-            if let Ok(fallback_resp) = client.get(&fallback_url).send().await {
+            if let Ok(fallback_resp) = client.get(&ver_url).send().await {
                 if let Ok(fallback_vers) = fallback_resp.json::<Vec<ModrinthVersion>>().await {
                     versions = fallback_vers;
                 }
@@ -205,7 +206,6 @@ impl CommunityManager {
             return Err(err);
         }
 
-        // 优先选用 primary 文件，否则用第一个文件
         let target_ver = &versions[0];
         let file_info = target_ver
             .files
@@ -214,7 +214,12 @@ impl CommunityManager {
             .or_else(|| target_ver.files.first())
             .ok_or_else(|| "该版本没有任何可下载文件".to_string())?;
 
-        // 决定落盘目标文件夹
+        // 防御路径逃逸：只取纯文件名组件
+        let safe_filename = Path::new(&file_info.filename)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "非法的文件名".to_string())?;
+
         let base_dir = if let Some(vp) = version_path_str {
             let v_path = Path::new(&vp);
             if v_path.join("mods").is_dir() && project_type == "mod" {
@@ -237,10 +242,10 @@ impl CommunityManager {
                 .map_err(|e| format!("创建目标目录失败: {}", e))?;
         }
 
-        let dest_path = target_folder.join(&file_info.filename);
+        let dest_path = target_folder.join(safe_filename);
 
         emit_progress(
-            &format!("正在下载 {}...", file_info.filename),
+            &format!("正在下载 {}...", safe_filename),
             20.0,
             "开始下载",
             false,
@@ -254,7 +259,7 @@ impl CommunityManager {
             .map_err(|e| format!("下载文件请求失败: {}", e))?;
 
         let mut dest_file = File::create(&dest_path).map_err(|e| e.to_string())?;
-        let total_size = file_info.size as f32;
+        let total_size = file_info.size.max(1) as f32;
         let mut downloaded: f32 = 0.0;
 
         while let Some(chunk) = file_resp.chunk().await.map_err(|e| e.to_string())? {

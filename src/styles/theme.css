@@ -8,6 +8,16 @@
   --pcl-color-hover: hsl(var(--pcl-hue), var(--pcl-sat), calc(var(--pcl-light) - 6%));
   --pcl-color-active: hsl(var(--pcl-hue), var(--pcl-sat), calc(var(--pcl-light) - 12%));
 
+  /* 对标原版 Application.xaml 的 8 阶动态主题色板 (ColorBrush1 ~ ColorBrush8) */
+  --pcl-brush-1: hsl(var(--pcl-hue), 18%, 25%);   /* #343d4a 深蓝灰主文字 */
+  --pcl-brush-2: hsl(var(--pcl-hue), 90%, 42%);   /* #0b5bcb 深主色 */
+  --pcl-brush-3: hsl(var(--pcl-hue), 90%, 51%);   /* #1370f3 核心亮主色 */
+  --pcl-brush-4: hsl(var(--pcl-hue), 89%, 62%);   /* #4890f5 次级亮主色 */
+  --pcl-brush-5: hsl(var(--pcl-hue), 90%, 78%);   /* #96c0f9 边框/弱强调 */
+  --pcl-brush-6: hsl(var(--pcl-hue), 92%, 91%);   /* #d5e6fd 浅底色 */
+  --pcl-brush-7: hsl(var(--pcl-hue), 92%, 94%);   /* #e0eafd 列表悬停底色 */
+  --pcl-brush-8: hsl(var(--pcl-hue), 93%, 96%);   /* #eaf2fe 极浅主区域底色 */
+
   /* 背景色与面板色 */
   --pcl-color-bg: #f3f6f9;
   --pcl-color-card: #ffffff;
@@ -21,6 +31,14 @@
   /* 经典 PCL 弹性缓动曲线 */
   --pcl-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
   --pcl-ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 原版 PCL2 经典模式变量覆盖 */
+:root[data-ui-style="classic"] {
+  --pcl-color-bg: var(--pcl-brush-8);
+  --pcl-color-card: rgba(255, 255, 255, 0.96);
+  --pcl-color-text: var(--pcl-brush-1);
+  --pcl-color-subtext: #737373;
 }
 
 /* 暗色模式支持预留 */

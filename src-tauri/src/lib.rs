@@ -1,5 +1,16 @@
-use pcl_base::{AppConfig, CommunityManager, ConfigManager, DeviceCodeResponse, DownloadManager, FabricMetaSummary, JavaInfo, JavaScanner, LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModrinthProject, RemoteVersion, ResourceItem, ResourceScanner, UserProfile, VersionInfo, VersionInstaller, VersionScanner};
+use pcl_base::{
+    platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager, DeviceCodeResponse,
+    DownloadManager, EndpointPingResult, FabricMetaSummary, JavaInfo, JavaScanner, LanRoomInfo,
+    LinkManager, LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner,
+    ModpackManager, ModrinthProject, MusicTrack, PlatformInfo, RemoteVersion, ResourceItem,
+    ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller, VersionScanner,
+};
 use tauri::{AppHandle, Manager};
+
+#[tauri::command]
+fn get_platform_info() -> PlatformInfo {
+    platform::get_platform_info()
+}
 
 #[tauri::command]
 fn get_installed_java() -> Vec<JavaInfo> {
@@ -22,35 +33,65 @@ fn toggle_mod_state(mods_dir: String, file_name: String) -> Result<String, Strin
 }
 
 #[tauri::command]
+fn toggle_instance_item(
+    version_path: String,
+    game_dir: String,
+    folder_name: String,
+    file_name: String,
+) -> Result<String, String> {
+    let target_dir = ResourceScanner::resolve_resource_folder(&version_path, &game_dir, &folder_name);
+    ModScanner::toggle_mod(&target_dir, &file_name)
+}
+
+#[tauri::command]
+fn delete_instance_item(
+    version_path: String,
+    game_dir: String,
+    folder_name: String,
+    file_name: String,
+) -> Result<(), String> {
+    let target_dir = ResourceScanner::resolve_resource_folder(&version_path, &game_dir, &folder_name);
+    ModScanner::delete_item(&target_dir, &file_name)
+}
+
+#[tauri::command]
+fn open_instance_folder(
+    version_path: String,
+    game_dir: String,
+    folder_name: String,
+) -> Result<(), String> {
+    let target_dir = ResourceScanner::resolve_resource_folder(&version_path, &game_dir, &folder_name);
+    ResourceScanner::open_folder(&target_dir)
+}
+
+#[tauri::command]
 fn get_resources(version_path: String, game_dir: String, folder_name: String) -> Vec<ResourceItem> {
     ResourceScanner::scan_folder(&version_path, &game_dir, &folder_name)
 }
 
 #[tauri::command]
-fn open_in_explorer(folder_path: String) -> Result<(), String> {
+fn get_instance_saves(version_path: String, game_dir: String) -> Vec<SaveInfo> {
+    ResourceScanner::scan_saves(&version_path, &game_dir)
+}
+
+#[tauri::command]
+fn open_folder(folder_path: String) -> Result<(), String> {
     ResourceScanner::open_folder(&folder_path)
 }
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", &url])
-            .creation_flags(0x08000000)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        Ok(())
-    }
+    platform::open_url(&url)
+}
+
+#[tauri::command]
+fn scan_music_folders(custom_dirs: Vec<String>) -> Vec<MusicTrack> {
+    ResourceScanner::scan_music_folders(&custom_dirs)
+}
+
+#[tauri::command]
+fn read_music_data_url(file_path: String) -> Result<String, String> {
+    ResourceScanner::read_music_data_url(&file_path)
 }
 
 #[tauri::command]
@@ -106,8 +147,37 @@ async fn download_minecraft_server(
     target_dir: String,
     version_id: String,
     meta_url: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     VersionInstaller::install_server(app, target_dir, version_id, meta_url).await
+}
+
+#[tauri::command]
+async fn import_modpack(
+    app: AppHandle,
+    game_dir: String,
+    mrpack_path: String,
+    custom_instance_name: Option<String>,
+) -> Result<String, String> {
+    ModpackManager::import_mrpack(app, game_dir, mrpack_path, custom_instance_name).await
+}
+
+#[tauri::command]
+fn export_modpack(
+    version_path: String,
+    game_dir: String,
+    version_id: String,
+    pack_name: String,
+    pack_version: String,
+    output_file: String,
+) -> Result<String, String> {
+    ModpackManager::export_instance_to_mrpack(
+        &version_path,
+        &game_dir,
+        &version_id,
+        &pack_name,
+        &pack_version,
+        &output_file,
+    )
 }
 
 #[tauri::command]
@@ -118,6 +188,15 @@ async fn get_microsoft_device_code() -> Result<DeviceCodeResponse, String> {
 #[tauri::command]
 async fn poll_microsoft_token(device_code: String) -> Result<UserProfile, String> {
     MicrosoftAuth::poll_for_token(device_code).await
+}
+
+#[tauri::command]
+async fn login_yggdrasil_account(
+    api_root: String,
+    username: String,
+    password: String,
+) -> Result<UserProfile, String> {
+    MicrosoftAuth::login_yggdrasil(&api_root, &username, &password).await
 }
 
 #[tauri::command]
@@ -169,6 +248,16 @@ fn save_app_config(config: AppConfig) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn load_user_profile() -> Option<UserProfile> {
+    ConfigManager::load_profile()
+}
+
+#[tauri::command]
+fn save_user_profile(profile: Option<UserProfile>) -> Result<(), String> {
+    ConfigManager::save_profile(profile.as_ref())
+}
+
+#[tauri::command]
 fn launch_minecraft(
     app: AppHandle,
     game_dir: String,
@@ -196,19 +285,55 @@ fn kill_game_process(pid: u32) -> Result<(), String> {
     MinecraftLauncher::kill_process(pid)
 }
 
+#[tauri::command]
+async fn scan_lan_rooms() -> Result<Vec<LanRoomInfo>, String> {
+    LinkManager::scan_lan_rooms(1500).await
+}
+
+#[tauri::command]
+async fn broadcast_lan_room(
+    motd: String,
+    host_ip: String,
+    port: u16,
+) -> Result<LanRoomInfo, String> {
+    LinkManager::broadcast_lan_room(&motd, &host_ip, port).await
+}
+
+#[tauri::command]
+fn decode_lan_invite_code(code: String) -> Result<(String, u16), String> {
+    LinkManager::decode_invite_code(&code)
+}
+
+#[tauri::command]
+async fn ping_download_endpoints() -> Vec<EndpointPingResult> {
+    LinkManager::ping_download_endpoints().await
+}
+
+#[tauri::command]
+fn clean_game_temp_cache(game_dir: String) -> Result<CacheCleanResult, String> {
+    LinkManager::clean_game_temp_cache(&game_dir)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            get_platform_info,
             get_installed_java,
             get_minecraft_versions,
             get_installed_mods,
             toggle_mod_state,
+            toggle_instance_item,
+            delete_instance_item,
+            open_instance_folder,
             get_resources,
-            open_in_explorer,
+            get_instance_saves,
+            open_folder,
             open_url,
+            scan_music_folders,
+            read_music_data_url,
             fetch_remote_versions,
             fetch_fabric_meta,
             fetch_forge_loaders,
@@ -216,20 +341,40 @@ pub fn run() {
             fetch_optifine_games,
             start_install_version,
             download_minecraft_server,
+            import_modpack,
+            export_modpack,
             search_modrinth_resources,
             install_modrinth_resource,
             get_microsoft_device_code,
             poll_microsoft_token,
+            login_yggdrasil_account,
             load_app_config,
             save_app_config,
+            load_user_profile,
+            save_user_profile,
             launch_minecraft,
-            kill_game_process
+            kill_game_process,
+            scan_lan_rooms,
+            broadcast_lan_room,
+            decode_lan_invite_code,
+            ping_download_endpoints,
+            clean_game_temp_cache
         ])
         .setup(|app| {
-            if let Some(_window) = app.get_webview_window("main") {
-                #[cfg(target_os = "windows")]
+            // 注入 Tauri 标准 app_config_dir（遵循规范 §2）
+            if let Ok(cfg_dir) = app.path().app_config_dir() {
+                platform::set_app_config_dir(cfg_dir);
+            }
+
+            // 遵循规范 §3.6：macOS 窗口恢复原生红绿灯装饰（platform 层之外唯一登记的窗口创建 cfg）
+            if let Some(window) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
                 {
-                    // Windows 原生窗口支持
+                    let _ = window.set_decorations(true);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let _ = window;
                 }
             }
             Ok(())

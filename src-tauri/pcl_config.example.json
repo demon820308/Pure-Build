@@ -1,0 +1,21 @@
+{
+  "game_dir": "<auto-derived-by-platform>",
+  "max_memory_mb": 4096,
+  "player_name": "Steve",
+  "java_path": null,
+  "window_width": 854,
+  "window_height": 480,
+  "theme_hue": 205,
+  "prefer_mirror": true,
+  "custom_bg_url": null,
+  "bg_blur": 8,
+  "bg_opacity": 85,
+  "custom_homepage_notice": null,
+  "ui_style": "classic",
+  "hide_yggdrasil_login": true,
+  "music_dirs": [],
+  "music_volume": 45,
+  "music_play_mode": "shuffle",
+  "music_auto_play": true,
+  "music_pause_on_launch": true
+}

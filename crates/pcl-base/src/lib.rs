@@ -3,10 +3,14 @@ pub mod community;
 pub mod config;
 pub mod crash;
 pub mod download;
+pub mod endpoints;
 pub mod installer;
 pub mod java;
 pub mod launch;
+pub mod link;
+pub mod modpack;
 pub mod mods;
+pub mod platform;
 pub mod resource;
 pub mod version;
 
@@ -18,6 +22,9 @@ pub use download::{DownloadManager, FabricMetaSummary, LoaderVersionItem, Remote
 pub use installer::{DownloadProgress, VersionInstaller};
 pub use java::{JavaInfo, JavaScanner};
 pub use launch::{LaunchProgress, MinecraftLauncher};
+pub use link::{CacheCleanResult, EndpointPingResult, LanRoomInfo, LinkManager};
+pub use modpack::{ModpackIndex, ModpackManager};
 pub use mods::{ModInfo, ModScanner};
-pub use resource::{ResourceItem, ResourceScanner};
+pub use platform::PlatformInfo;
+pub use resource::{MusicTrack, ResourceItem, ResourceScanner, SaveInfo};
 pub use version::{VersionInfo, VersionScanner};

@@ -28,3 +28,9 @@ dist-ssr
 /target_check
 src-tauri/target
 **/target
+
+# Local configuration & credentials
+pcl_config.json
+**/pcl_config.json
+pcl_credentials.json
+**/pcl_credentials.json

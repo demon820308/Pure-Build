@@ -37,7 +37,7 @@ ${props.crash.log_snippet}
 
 const openReportFile = async () => {
   if (props.crash.report_file) {
-    await backend.openInExplorer(props.crash.report_file)
+    await backend.openFolder(props.crash.report_file)
   }
 }
 </script>

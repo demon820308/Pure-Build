@@ -12,9 +12,9 @@ export default defineConfig({
   theme: {
     colors: {
       pcl: {
-        primary: 'var(--pcl-color-primary)',
-        hover: 'var(--pcl-color-hover)',
-        active: 'var(--pcl-color-active)',
+        primary: 'hsla(var(--pcl-hue), var(--pcl-sat), var(--pcl-light), %alpha)',
+        hover: 'hsla(var(--pcl-hue), var(--pcl-sat), calc(var(--pcl-light) - 6%), %alpha)',
+        active: 'hsla(var(--pcl-hue), var(--pcl-sat), calc(var(--pcl-light) - 12%), %alpha)',
         bg: 'var(--pcl-color-bg)',
         card: 'var(--pcl-color-card)',
         cardHover: 'var(--pcl-color-card-hover)',
