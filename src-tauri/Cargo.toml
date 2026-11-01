@@ -1,6 +1,6 @@
 [package]
 name = "pure-build-launcher"
-version = "0.1.2"
+version = "0.1.3"
 description = "Pure Build Launcher - Tauri 2.0 Edition"
 authors = ["Pure Build Team"]
 license = "GPL-3.0-or-later"
