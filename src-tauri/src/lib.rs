@@ -13,18 +13,24 @@ fn get_platform_info() -> PlatformInfo {
 }
 
 #[tauri::command]
-fn get_installed_java() -> Vec<JavaInfo> {
-    JavaScanner::scan_all()
+async fn get_installed_java() -> Vec<JavaInfo> {
+    tauri::async_runtime::spawn_blocking(JavaScanner::scan_all)
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn get_minecraft_versions(game_dir: String) -> Vec<VersionInfo> {
-    VersionScanner::scan_versions(&game_dir)
+async fn get_minecraft_versions(game_dir: String) -> Vec<VersionInfo> {
+    tauri::async_runtime::spawn_blocking(move || VersionScanner::scan_versions(&game_dir))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn get_installed_mods(version_path: String, game_dir: String) -> Vec<ModInfo> {
-    ModScanner::scan_mods(&version_path, &game_dir)
+async fn get_installed_mods(version_path: String, game_dir: String) -> Vec<ModInfo> {
+    tauri::async_runtime::spawn_blocking(move || ModScanner::scan_mods(&version_path, &game_dir))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -65,13 +71,21 @@ fn open_instance_folder(
 }
 
 #[tauri::command]
-fn get_resources(version_path: String, game_dir: String, folder_name: String) -> Vec<ResourceItem> {
-    ResourceScanner::scan_folder(&version_path, &game_dir, &folder_name)
+async fn get_resources(version_path: String, game_dir: String, folder_name: String) -> Vec<ResourceItem> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ResourceScanner::scan_folder(&version_path, &game_dir, &folder_name)
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
-fn get_instance_saves(version_path: String, game_dir: String) -> Vec<SaveInfo> {
-    ResourceScanner::scan_saves(&version_path, &game_dir)
+async fn get_instance_saves(version_path: String, game_dir: String) -> Vec<SaveInfo> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ResourceScanner::scan_saves(&version_path, &game_dir)
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -85,13 +99,17 @@ fn open_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn scan_music_folders(custom_dirs: Vec<String>) -> Vec<MusicTrack> {
-    ResourceScanner::scan_music_folders(&custom_dirs)
+async fn scan_music_folders(custom_dirs: Vec<String>) -> Vec<MusicTrack> {
+    tauri::async_runtime::spawn_blocking(move || ResourceScanner::scan_music_folders(&custom_dirs))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn read_music_data_url(file_path: String) -> Result<String, String> {
-    ResourceScanner::read_music_data_url(&file_path)
+async fn read_music_data_url(file_path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || ResourceScanner::read_music_data_url(&file_path))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -320,6 +338,13 @@ fn clean_game_temp_cache(game_dir: String) -> Result<CacheCleanResult, String> {
 }
 
 #[tauri::command]
+fn show_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(())
+}
+
+#[tauri::command]
 fn minimize_window(window: tauri::WebviewWindow) -> Result<(), String> {
     window.minimize().map_err(|e| e.to_string())
 }
@@ -375,6 +400,7 @@ pub fn run() {
             decode_lan_invite_code,
             ping_download_endpoints,
             clean_game_temp_cache,
+            show_main_window,
             minimize_window,
             close_window
         ])
@@ -391,6 +417,15 @@ pub fn run() {
                 {
                     let _ = window.set_decorations(true);
                 }
+
+                // 兜底机制：若前端异常未在 1.5s 内触发首帧 show_main_window，则自动显示窗口防止隐身
+                let win_clone = window.clone();
+                tauri::async_runtime::spawn(async move {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    if !win_clone.is_visible().unwrap_or(true) {
+                        let _ = win_clone.show();
+                    }
+                });
             }
             Ok(())
         })

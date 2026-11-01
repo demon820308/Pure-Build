@@ -76,25 +76,26 @@ const handleYggdrasilLogin = async () => {
   }
 }
 
+const scanJavaRuntime = async () => {
+  isScanning.value = true
+  try {
+    const javas = await backend.getInstalledJava()
+    javaList.value = javas
+    if (javas.length > 0 && !selectedJava.value) {
+      selectedJava.value = javas[0]
+    }
+  } finally {
+    isScanning.value = false
+  }
+}
+
 const loadData = async () => {
   isScanning.value = true
   try {
     if (!store.gameDir) {
       await store.initConfig()
     }
-    const javas = await backend.getInstalledJava()
-    javaList.value = javas
-    if (javas.length > 0 && !selectedJava.value) {
-      selectedJava.value = javas[0]
-    }
-
-    if (store.gameDir) {
-      const versions = await backend.getMinecraftVersions(store.gameDir)
-      store.installedVersions = versions
-      if (versions.length > 0 && !store.currentVersion) {
-        store.currentVersion = versions[0]
-      }
-    }
+    await Promise.all([scanJavaRuntime(), store.refreshInstalledVersions()])
   } finally {
     isScanning.value = false
   }
@@ -102,15 +103,16 @@ const loadData = async () => {
 
 watch(
   () => store.gameDir,
-  (newDir) => {
-    if (newDir) {
+  (newDir, oldDir) => {
+    if (newDir && oldDir && newDir !== oldDir) {
       loadData()
     }
   }
 )
 
 onMounted(async () => {
-  loadData()
+  await store.initConfig()
+  void scanJavaRuntime()
 
   // 监听后端派发的启动进度事件
   unlistenLaunch = await backend.onLaunchProgress((p) => {

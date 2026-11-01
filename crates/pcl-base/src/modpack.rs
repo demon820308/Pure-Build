@@ -2,8 +2,9 @@
 //! 支持 Modrinth `.mrpack` 标准格式整合包的解析、底层核心与加载器自动安装、并发下载模组资源及解压 `overrides`。
 //! 严格遵循项目反写死与防 zip-slip 规范（§2 & §4）。
 
+use crate::config::ConfigManager;
 use crate::download::DownloadManager;
-use crate::endpoints::DEFAULT_LIBRARY_CONCURRENCY;
+use crate::endpoints::{self, DEFAULT_LIBRARY_CONCURRENCY};
 use crate::installer::{DownloadProgress, VersionInstaller};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -179,10 +180,8 @@ impl ModpackManager {
 
         let total_files = client_files.len();
         if total_files > 0 {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .map_err(|e| e.to_string())?;
+            let client = endpoints::shared_http_client();
+            let prefer_mirror = ConfigManager::load().prefer_mirror;
 
             let semaphore = Arc::new(Semaphore::new(DEFAULT_LIBRARY_CONCURRENCY));
             let completed = Arc::new(AtomicUsize::new(0));
@@ -194,39 +193,35 @@ impl ModpackManager {
                     continue;
                 };
                 let sem = semaphore.clone();
-                let cli = client.clone();
                 let comp = completed.clone();
                 let app_clone = app.clone();
                 let inst_name = instance_name.clone();
 
-                join_set.spawn(async move {
-                    let _permit = sem.acquire_owned().await.ok();
-                    if let Some(parent) = dest_path.parent() {
-                        let _ = fs::create_dir_all(parent);
-                    }
-
-                    let mut downloaded_ok = dest_path.is_file()
-                        && fs::metadata(&dest_path)
-                            .map(|m| m.len() == file_entry.file_size)
-                            .unwrap_or(false);
-
-                    if !downloaded_ok {
-                        for url in &file_entry.downloads {
-                            if let Ok(resp) = cli.get(url).send().await {
-                                if resp.status().is_success() {
-                                    if let Ok(bytes) = resp.bytes().await {
-                                        if let Ok(mut f) = File::create(&dest_path) {
-                                            if f.write_all(&bytes).is_ok() {
-                                                downloaded_ok = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                let mut candidate_urls = Vec::new();
+                for u in &file_entry.downloads {
+                    for resolved in endpoints::resolve_modrinth_file_urls(u, prefer_mirror) {
+                        if !candidate_urls.contains(&resolved) {
+                            candidate_urls.push(resolved);
                         }
                     }
-                    let _ = downloaded_ok;
+                }
+
+                join_set.spawn(async move {
+                    let _permit = sem.acquire_owned().await.ok();
+                    let expected = if file_entry.file_size > 0 {
+                        Some(file_entry.file_size)
+                    } else {
+                        None
+                    };
+
+                    let res = VersionInstaller::download_file_with_retry(
+                        client,
+                        &candidate_urls,
+                        &dest_path,
+                        expected,
+                        |_, _| {},
+                    )
+                    .await;
 
                     let done = comp.fetch_add(1, Ordering::Relaxed) + 1;
                     let pct = 85.0 + (done as f32 / total_files as f32) * 12.0;
@@ -242,10 +237,24 @@ impl ModpackManager {
                             error: None,
                         },
                     );
+                    res.map_err(|e| format!("{} ({})", file_entry.path, e))
                 });
             }
 
-            while join_set.join_next().await.is_some() {}
+            let mut failed = Vec::new();
+            while let Some(joined) = join_set.join_next().await {
+                if let Ok(Err(e)) = joined {
+                    failed.push(e);
+                }
+            }
+            if !failed.is_empty() {
+                let preview: Vec<&str> = failed.iter().take(3).map(|s| s.as_str()).collect();
+                return Err(format!(
+                    "整合包有 {} 个文件下载失败: {}",
+                    failed.len(),
+                    preview.join("; ")
+                ));
+            }
         }
 
         // 4. 解压 overrides/ 与 client-overrides/ 覆盖文件到版本隔离目录（遵循 §4 防 zip-slip）

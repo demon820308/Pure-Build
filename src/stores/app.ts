@@ -454,64 +454,70 @@ export const useAppStore = defineStore('app', () => {
     saveCurrentConfig()
   }
 
-  // 初始化加载后端平台信息、持久化配置与凭据
+  let initPromise: Promise<void> | null = null
+
+  // 初始化加载后端平台信息、持久化配置与凭据（带并发去重锁与首屏非阻塞异步扫描）
   const initConfig = async () => {
-    try {
-      const pInfo = await backend.getPlatformInfo()
-      platformInfo.value = pInfo
+    if (initPromise) return initPromise
+    initPromise = (async () => {
+      try {
+        const [pInfo, cfg, savedProfile] = await Promise.all([
+          backend.getPlatformInfo(),
+          backend.loadConfig(),
+          backend.loadUserProfile(),
+        ])
+        platformInfo.value = pInfo
 
-      const cfg = await backend.loadConfig()
-      gameDir.value = cfg.game_dir || pInfo.default_game_dir
-      maxMemoryMb.value = cfg.max_memory_mb
-      playerName.value = cfg.player_name
-      windowWidth.value = cfg.window_width
-      windowHeight.value = cfg.window_height
-      themeHue.value = cfg.theme_hue
-      preferMirror.value = cfg.prefer_mirror ?? true
-      customBgUrl.value = cfg.custom_bg_url || ''
-      bgBlur.value = cfg.bg_blur ?? 8
-      bgOpacity.value = cfg.bg_opacity ?? 85
-      customHomepageNotice.value = cfg.custom_homepage_notice || ''
-      uiStyle.value = cfg.ui_style === 'modern' ? 'modern' : 'classic'
-      hideYggdrasilLogin.value = cfg.hide_yggdrasil_login ?? true
-      musicDirs.value = Array.isArray(cfg.music_dirs) ? cfg.music_dirs : []
-      musicVolume.value = cfg.music_volume ?? 45
-      musicPlayMode.value =
-        cfg.music_play_mode === 'list' || cfg.music_play_mode === 'single'
-          ? cfg.music_play_mode
-          : 'shuffle'
-      musicAutoPlay.value = cfg.music_auto_play ?? true
-      musicPauseOnLaunch.value = cfg.music_pause_on_launch ?? true
-      musicEqPreset.value = cfg.music_eq_preset || 'flat'
-      musicEqCustom.value =
-        Array.isArray(cfg.music_eq_custom) && cfg.music_eq_custom.length === 5
-          ? cfg.music_eq_custom
-          : [0, 0, 0, 0, 0]
-      musicCompressor.value = cfg.music_compressor ?? true
-      musicCrossfade.value = cfg.music_crossfade ?? true
+        gameDir.value = cfg.game_dir || pInfo.default_game_dir
+        maxMemoryMb.value = cfg.max_memory_mb
+        playerName.value = cfg.player_name
+        windowWidth.value = cfg.window_width
+        windowHeight.value = cfg.window_height
+        themeHue.value = cfg.theme_hue
+        preferMirror.value = cfg.prefer_mirror ?? true
+        customBgUrl.value = cfg.custom_bg_url || ''
+        bgBlur.value = cfg.bg_blur ?? 8
+        bgOpacity.value = cfg.bg_opacity ?? 85
+        customHomepageNotice.value = cfg.custom_homepage_notice || ''
+        uiStyle.value = cfg.ui_style === 'modern' ? 'modern' : 'classic'
+        hideYggdrasilLogin.value = cfg.hide_yggdrasil_login ?? true
+        musicDirs.value = Array.isArray(cfg.music_dirs) ? cfg.music_dirs : []
+        musicVolume.value = cfg.music_volume ?? 45
+        musicPlayMode.value =
+          cfg.music_play_mode === 'list' || cfg.music_play_mode === 'single'
+            ? cfg.music_play_mode
+            : 'shuffle'
+        musicAutoPlay.value = cfg.music_auto_play ?? true
+        musicPauseOnLaunch.value = cfg.music_pause_on_launch ?? true
+        musicEqPreset.value = cfg.music_eq_preset || 'flat'
+        musicEqCustom.value =
+          Array.isArray(cfg.music_eq_custom) && cfg.music_eq_custom.length === 5
+            ? cfg.music_eq_custom
+            : [0, 0, 0, 0, 0]
+        musicCompressor.value = cfg.music_compressor ?? true
+        musicCrossfade.value = cfg.music_crossfade ?? true
 
-      audioEngine.setVolume(musicVolume.value)
-      audioEngine.setPreset(musicEqPreset.value, musicEqCustom.value)
-      audioEngine.setCompressorEnabled(musicCompressor.value)
-      audioEngine.setCrossfadeEnabled(musicCrossfade.value)
-      document.documentElement.style.setProperty('--pcl-hue', cfg.theme_hue.toString())
-      document.documentElement.setAttribute('data-ui-style', uiStyle.value)
+        audioEngine.setVolume(musicVolume.value)
+        audioEngine.setPreset(musicEqPreset.value, musicEqCustom.value)
+        audioEngine.setCompressorEnabled(musicCompressor.value)
+        audioEngine.setCrossfadeEnabled(musicCrossfade.value)
+        document.documentElement.style.setProperty('--pcl-hue', cfg.theme_hue.toString())
+        document.documentElement.setAttribute('data-ui-style', uiStyle.value)
 
-      // 从后端安全凭据文件读取已登录的 Profile（不再使用前端 localStorage）
-      const savedProfile = await backend.loadUserProfile()
-      if (savedProfile && !(hideYggdrasilLogin.value && savedProfile.auth_type === 'yggdrasil')) {
-        userProfile.value = savedProfile
-        playerName.value = savedProfile.name
+        // 从后端安全凭据文件读取已登录的 Profile（不再使用前端 localStorage）
+        if (savedProfile && !(hideYggdrasilLogin.value && savedProfile.auth_type === 'yggdrasil')) {
+          userProfile.value = savedProfile
+          playerName.value = savedProfile.name
+        }
+
+        // 后台异步扫描本地版本与音乐文件夹，不阻塞首帧显示与窗口弹出
+        void refreshInstalledVersions()
+        void refreshMusicPlaylist(false, true)
+      } catch (e) {
+        console.warn('加载配置文件失败，使用后端默认配置:', e)
       }
-
-      // 扫描本地已安装的版本
-      await refreshInstalledVersions()
-
-      // 扫描音乐文件夹并按配置自动初始化播放列表
-      await refreshMusicPlaylist(false, true)
-    } catch (e) {
-      console.warn('加载配置文件失败，使用后端默认配置:', e)
-    }
+    })()
+    return initPromise
   }
 
   // 刷新本地已安装版本列表

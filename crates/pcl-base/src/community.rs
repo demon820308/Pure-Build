@@ -1,8 +1,8 @@
-use crate::endpoints::{LAUNCHER_USER_AGENT, MODRINTH_API_BASE};
-use crate::installer::DownloadProgress;
+use crate::config::ConfigManager;
+use crate::endpoints;
+use crate::installer::{DownloadProgress, VersionInstaller};
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
-use std::io::Write;
+use std::fs;
 use std::path::Path;
 use tauri::{AppHandle, Emitter};
 
@@ -59,18 +59,15 @@ struct ModrinthFile {
 pub struct CommunityManager;
 
 impl CommunityManager {
-    /// 搜索 Modrinth 社区资源 (Mods, Shaders, Resourcepacks)
+    /// 搜索 Modrinth 社区资源 (Mods, Shaders, Resourcepacks)，支持 MCIM 国内镜像与官方源自动故障转移（对齐 PCL2 DlModRequest）
     pub async fn search_resources(
         query: &str,
         project_type: &str,
         game_version: Option<&str>,
         loader: Option<&str>,
     ) -> Result<Vec<ModrinthProject>, String> {
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .user_agent(LAUNCHER_USER_AGENT)
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = endpoints::shared_http_client();
+        let prefer_mirror = ConfigManager::load().prefer_mirror;
 
         // 构造 facets 过滤条件: [["project_type:<type>"], ["versions:<mc_ver>"], ["categories:<loader>"]]
         let mut facets_arr = vec![format!("[\"project_type:{}\"]", project_type)];
@@ -88,27 +85,38 @@ impl CommunityManager {
         }
 
         let facets_param = format!("[{}]", facets_arr.join(","));
-        let search_url = format!("{}/search", MODRINTH_API_BASE);
+        let search_urls = endpoints::resolve_modrinth_api_urls("search", prefer_mirror);
 
-        let mut req = client
-            .get(&search_url)
-            .query(&[("limit", "25"), ("facets", &facets_param)]);
+        let mut last_err = String::from("请求 Modrinth API 失败");
+        let mut search_data_opt: Option<ModrinthSearchResponse> = None;
 
-        if !query.trim().is_empty() {
-            req = req.query(&[("query", query.trim())]);
-        } else {
-            req = req.query(&[("index", "downloads")]);
+        for url in &search_urls {
+            let mut req = client
+                .get(url)
+                .query(&[("limit", "25"), ("facets", &facets_param)]);
+
+            if !query.trim().is_empty() {
+                req = req.query(&[("query", query.trim())]);
+            } else {
+                req = req.query(&[("index", "downloads")]);
+            }
+
+            match req.send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    match resp.json::<ModrinthSearchResponse>().await {
+                        Ok(data) => {
+                            search_data_opt = Some(data);
+                            break;
+                        }
+                        Err(e) => last_err = format!("解析 Modrinth 数据失败: {}", e),
+                    }
+                }
+                Ok(resp) => last_err = format!("Modrinth API HTTP {}", resp.status()),
+                Err(e) => last_err = format!("请求 Modrinth API 失败: {}", e),
+            }
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| format!("请求 Modrinth API 失败: {}", e))?;
-
-        let search_data: ModrinthSearchResponse = resp
-            .json()
-            .await
-            .map_err(|e| format!("解析 Modrinth 数据失败: {}", e))?;
+        let search_data = search_data_opt.ok_or(last_err)?;
 
         let results = search_data
             .hits
@@ -130,7 +138,7 @@ impl CommunityManager {
         Ok(results)
     }
 
-    /// 下载并安装指定的 Modrinth 资源到指定文件夹
+    /// 下载并安装指定的 Modrinth 资源到指定文件夹（支持 MCIM 镜像加速 + 临时文件原子校验）
     pub async fn install_resource(
         app: AppHandle,
         game_dir_str: String,
@@ -158,13 +166,13 @@ impl CommunityManager {
 
         emit_progress("正在获取该资源的匹配版本...", 10.0, "解析版本", false, None);
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .user_agent(LAUNCHER_USER_AGENT)
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = endpoints::shared_http_client();
+        let prefer_mirror = ConfigManager::load().prefer_mirror;
 
-        let ver_url = format!("{}/project/{}/version", MODRINTH_API_BASE, project_id);
+        let ver_urls = endpoints::resolve_modrinth_api_urls(
+            &format!("project/{}/version", project_id),
+            prefer_mirror,
+        );
         let mut query_params: Vec<(&str, String)> = Vec::new();
 
         if let Some(ref gv) = game_version {
@@ -180,28 +188,42 @@ impl CommunityManager {
             }
         }
 
-        let resp = client
-            .get(&ver_url)
-            .query(&query_params)
-            .send()
-            .await
-            .map_err(|e| format!("查询版本失败: {}", e))?;
+        let mut versions: Vec<ModrinthVersion> = Vec::new();
+        let mut last_ver_err = String::from("查询版本失败");
 
-        let mut versions: Vec<ModrinthVersion> = resp
-            .json()
-            .await
-            .map_err(|e| format!("解析版本列表失败: {}", e))?;
+        for ver_url in &ver_urls {
+            match client.get(ver_url).query(&query_params).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(parsed) = resp.json::<Vec<ModrinthVersion>>().await {
+                        versions = parsed;
+                        break;
+                    }
+                }
+                Ok(resp) => last_ver_err = format!("HTTP {}", resp.status()),
+                Err(e) => last_ver_err = format!("查询版本失败: {}", e),
+            }
+        }
 
         if versions.is_empty() {
-            if let Ok(fallback_resp) = client.get(&ver_url).send().await {
-                if let Ok(fallback_vers) = fallback_resp.json::<Vec<ModrinthVersion>>().await {
-                    versions = fallback_vers;
+            for ver_url in &ver_urls {
+                if let Ok(fallback_resp) = client.get(ver_url).send().await {
+                    if fallback_resp.status().is_success() {
+                        if let Ok(fallback_vers) =
+                            fallback_resp.json::<Vec<ModrinthVersion>>().await
+                        {
+                            versions = fallback_vers;
+                            break;
+                        }
+                    }
                 }
             }
         }
 
         if versions.is_empty() {
-            let err = "未找到与当前游戏版本或加载器兼容的资源文件！".to_string();
+            let err = format!(
+                "未找到与当前游戏版本或加载器兼容的资源文件 ({})",
+                last_ver_err
+            );
             emit_progress("安装失败", 0.0, "失败", true, Some(err.clone()));
             return Err(err);
         }
@@ -252,28 +274,34 @@ impl CommunityManager {
             None,
         );
 
-        let mut file_resp = client
-            .get(&file_info.url)
-            .send()
-            .await
-            .map_err(|e| format!("下载文件请求失败: {}", e))?;
+        let candidate_urls = endpoints::resolve_modrinth_file_urls(&file_info.url, prefer_mirror);
+        let mut last_emit_pct = 0.0f32;
 
-        let mut dest_file = File::create(&dest_path).map_err(|e| e.to_string())?;
-        let total_size = file_info.size.max(1) as f32;
-        let mut downloaded: f32 = 0.0;
-
-        while let Some(chunk) = file_resp.chunk().await.map_err(|e| e.to_string())? {
-            dest_file.write_all(&chunk).map_err(|e| e.to_string())?;
-            downloaded += chunk.len() as f32;
-
-            let pct = 20.0 + (downloaded / total_size) * 78.0;
-            let mb_text = format!(
-                "{:.1}MB / {:.1}MB",
-                downloaded / (1024.0 * 1024.0),
-                total_size / (1024.0 * 1024.0)
-            );
-            emit_progress("正在高速下载中...", pct, &mb_text, false, None);
-        }
+        VersionInstaller::download_file_with_retry(
+            client,
+            &candidate_urls,
+            &dest_path,
+            Some(file_info.size),
+            |downloaded, total| {
+                let total_f = total.max(1) as f32;
+                let dl_f = downloaded as f32;
+                let pct = 20.0 + (dl_f / total_f) * 78.0;
+                if (pct - last_emit_pct).abs() >= 1.0 || downloaded >= total {
+                    last_emit_pct = pct;
+                    let mb_text = format!(
+                        "{:.1}MB / {:.1}MB",
+                        dl_f / (1024.0 * 1024.0),
+                        total_f / (1024.0 * 1024.0)
+                    );
+                    emit_progress("正在高速下载中...", pct, &mb_text, false, None);
+                }
+            },
+        )
+        .await
+        .map_err(|e| {
+            emit_progress("安装失败", 0.0, "失败", true, Some(e.clone()));
+            e
+        })?;
 
         emit_progress("安装完成！", 100.0, "完成", true, None);
         Ok(format!("已成功安装到 {:?}", dest_path))

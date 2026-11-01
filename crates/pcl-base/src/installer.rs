@@ -91,8 +91,7 @@ struct LoaderProfileJson {
 #[derive(Debug, Clone)]
 struct BatchDownloadTask {
     target_path: PathBuf,
-    primary_url: String,
-    backup_url: Option<String>,
+    urls: Vec<String>,
     expected_size: Option<u64>,
     extract_natives: Option<(PathBuf, Option<Vec<String>>)>,
 }
@@ -100,6 +99,210 @@ struct BatchDownloadTask {
 pub struct VersionInstaller;
 
 impl VersionInstaller {
+    /// 获取针对特定本地目标路径的异步互斥锁（对齐 PCL2 `NetManagerClass.AllFiles` 全局正在下载去重机制，防止多次点击或并发任务写同一文件冲突）
+    fn acquire_file_lock(path: &Path) -> Arc<tokio::sync::Mutex<()>> {
+        static FILE_LOCKS: std::sync::OnceLock<
+            std::sync::Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>,
+        > = std::sync::OnceLock::new();
+        let map_mutex = FILE_LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+        let mut map = map_mutex.lock().unwrap();
+        map.entry(path.to_path_buf())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
+    }
+
+    /// 校验本地文件是否完整有效（对齐 PCL2 `FileChecker.Check`）：
+    /// 1. 校验文件存在且大小匹配 `expected_size`（未指定时要求 > 0）；
+    /// 2. 若扩展名为 `.jar` 或 `.zip`，额外校验 ZIP 魔数 `PK\x03\x04` 或 `PK\x05\x06`，防止网关 429/502 HTML 报错页或截断文件伪装成有效构件。
+    pub fn is_file_valid(path: &Path, expected_size: Option<u64>) -> bool {
+        let Ok(meta) = fs::metadata(path) else {
+            return false;
+        };
+        if !meta.is_file() {
+            return false;
+        }
+        let len = meta.len();
+        if let Some(exp) = expected_size {
+            if exp > 0 && len != exp {
+                return false;
+            }
+        } else if len == 0 {
+            return false;
+        }
+
+        let is_archive = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("jar") || ext.eq_ignore_ascii_case("zip"))
+            .unwrap_or(false);
+
+        if is_archive {
+            if len < 4 {
+                return false;
+            }
+            let Ok(mut f) = File::open(path) else {
+                return false;
+            };
+            let mut magic = [0u8; 4];
+            if f.read_exact(&mut magic).is_err() {
+                return false;
+            }
+            if &magic != b"PK\x03\x04" && &magic != b"PK\x05\x06" {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// 流式下载单个文件并原子落盘（对齐 PCL2 `NetFile` 下载状态机）：
+    /// - 同路径全局互斥防冲突，已通过 `is_file_valid` 的文件直接秒过；
+    /// - 针对 BMCLAPI 自动执行建连节流；
+    /// - 支持多源轮询与两轮 `Retried` 完整重试，遇到 429/503 自动冷却等待；
+    /// - 先写入 `.tmp` 临时文件，完成并通过 `is_file_valid` 校验后原子替换目标文件。
+    pub async fn download_file_with_retry<F>(
+        client: &reqwest::Client,
+        urls: &[String],
+        target_path: &Path,
+        expected_size: Option<u64>,
+        mut on_progress: F,
+    ) -> Result<(), String>
+    where
+        F: FnMut(u64, u64),
+    {
+        let file_lock = Self::acquire_file_lock(target_path);
+        let _guard = file_lock.lock().await;
+
+        if Self::is_file_valid(target_path, expected_size) {
+            let sz = expected_size
+                .or_else(|| fs::metadata(target_path).ok().map(|m| m.len()))
+                .unwrap_or(1);
+            on_progress(sz, sz);
+            return Ok(());
+        }
+
+        if let Some(parent) = target_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let file_name = target_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("download");
+        let mut last_err = String::from("无可用下载源");
+
+        // 对齐 PCL2 NetFile：两轮完整尝试（第一轮常规多源切换，第二轮 Retried 兜底重试）
+        for pass in 0..2usize {
+            if pass > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+            }
+            for url in urls {
+                if url.trim().is_empty() {
+                    continue;
+                }
+                endpoints::pace_mirror_request(url).await;
+
+                let resp = match client.get(url).send().await {
+                    Ok(r) => r,
+                    Err(e) => {
+                        last_err = format!("{} 请求失败: {}", file_name, e);
+                        continue;
+                    }
+                };
+
+                let status = resp.status();
+                if status.as_u16() == 429
+                    || status.as_u16() == 503
+                    || (status.as_u16() == 403 && endpoints::is_mirror_url(url))
+                {
+                    last_err = format!("{} 镜像源限流 (HTTP {})", file_name, status.as_u16());
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                    continue;
+                }
+                if !status.is_success() {
+                    last_err = format!("{} HTTP {} ({})", file_name, status, url);
+                    continue;
+                }
+
+                let content_len = resp.content_length();
+                if let (Some(exp), Some(cl)) = (expected_size, content_len) {
+                    if exp > 0 && cl > 0 && cl != exp {
+                        last_err = format!(
+                            "{} 远端 ContentLength ({}) 与预期大小 ({}) 不一致",
+                            file_name, cl, exp
+                        );
+                        continue;
+                    }
+                }
+
+                let total_bytes = expected_size.or(content_len).unwrap_or(0);
+                let tmp_path = target_path.with_file_name(format!(
+                    ".{}.{}.part.tmp",
+                    file_name,
+                    std::process::id()
+                ));
+
+                let mut stream_ok = true;
+                let mut downloaded: u64 = 0;
+
+                match File::create(&tmp_path) {
+                    Ok(mut tmp_file) => {
+                        let mut resp_stream = resp;
+                        loop {
+                            match resp_stream.chunk().await {
+                                Ok(Some(chunk)) => {
+                                    if let Err(e) = tmp_file.write_all(&chunk) {
+                                        last_err = format!("写入临时文件失败: {}", e);
+                                        stream_ok = false;
+                                        break;
+                                    }
+                                    downloaded += chunk.len() as u64;
+                                    on_progress(downloaded, total_bytes.max(downloaded));
+                                }
+                                Ok(None) => break,
+                                Err(e) => {
+                                    last_err = format!("{} 读取数据流中断: {}", file_name, e);
+                                    stream_ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        let _ = tmp_file.flush();
+                    }
+                    Err(e) => {
+                        last_err = format!("创建临时文件失败: {}", e);
+                        stream_ok = false;
+                    }
+                }
+
+                if stream_ok {
+                    let check_size = expected_size.or(content_len.filter(|&c| c > 0));
+                    if Self::is_file_valid(&tmp_path, check_size) {
+                        if target_path.exists() {
+                            let _ = fs::remove_file(target_path);
+                        }
+                        if let Err(e) = fs::rename(&tmp_path, target_path) {
+                            // 跨卷或重命名受阻时回退 copy + remove
+                            if fs::copy(&tmp_path, target_path).is_ok() {
+                                let _ = fs::remove_file(&tmp_path);
+                                return Ok(());
+                            }
+                            last_err = format!("替换目标文件失败: {}", e);
+                        } else {
+                            return Ok(());
+                        }
+                    } else {
+                        last_err = format!("{} 下载后文件校验未通过 ({})", file_name, url);
+                    }
+                }
+
+                let _ = fs::remove_file(&tmp_path);
+            }
+        }
+
+        Err(last_err)
+    }
+
     /// 将 Maven 坐标转换为 (本地相对 PathBuf, 远端 URL 子路径)
     fn maven_to_path_and_url(name: &str) -> (PathBuf, String) {
         let rel_path = MinecraftLauncher::maven_to_path(name);
@@ -124,33 +327,47 @@ impl VersionInstaller {
         (rel_path, url_subpath)
     }
 
-    async fn fetch_bytes(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, String> {
-        let resp = client.get(url).send().await.map_err(|e| e.to_string())?;
-        if resp.status().is_success() {
-            let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-            Ok(bytes.to_vec())
-        } else {
-            Err(format!("HTTP {}", resp.status()))
-        }
-    }
-
     async fn fetch_bytes_with_fallback(
         client: &reqwest::Client,
         primary_url: &str,
         backup_url: Option<&str>,
     ) -> Result<Vec<u8>, String> {
-        match Self::fetch_bytes(client, primary_url).await {
-            Ok(b) => Ok(b),
-            Err(e) => {
-                if let Some(backup) = backup_url {
-                    Self::fetch_bytes(client, backup)
-                        .await
-                        .map_err(|e2| format!("下载失败: {} / {}", e, e2))
-                } else {
-                    Err(format!("下载失败: {}", e))
+        let mut urls = vec![primary_url.to_string()];
+        if let Some(b) = backup_url {
+            if !b.is_empty() && b != primary_url {
+                urls.push(b.to_string());
+            }
+        }
+        let mut last_err = String::from("下载失败");
+        for attempt in 0..3usize {
+            if attempt > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(600 * attempt as u64)).await;
+            }
+            for url in &urls {
+                endpoints::pace_mirror_request(url).await;
+                match client.get(url).send().await {
+                    Ok(resp) => {
+                        let status = resp.status();
+                        if status.as_u16() == 429 || status.as_u16() == 503 {
+                            last_err = format!("HTTP {} ({})", status, url);
+                            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                            continue;
+                        }
+                        if !status.is_success() {
+                            last_err = format!("HTTP {} ({})", status, url);
+                            continue;
+                        }
+                        match resp.bytes().await {
+                            Ok(b) if !b.is_empty() => return Ok(b.to_vec()),
+                            Ok(_) => last_err = format!("响应内容为空 ({})", url),
+                            Err(e) => last_err = format!("读取字节流失败: {}", e),
+                        }
+                    }
+                    Err(e) => last_err = format!("请求异常: {}", e),
                 }
             }
         }
+        Err(last_err)
     }
 
     async fn fetch_text_with_fallback(
@@ -158,22 +375,51 @@ impl VersionInstaller {
         primary_url: &str,
         backup_url: &str,
     ) -> Result<String, String> {
-        if let Ok(resp) = client.get(primary_url).send().await {
-            if resp.status().is_success() {
-                if let Ok(txt) = resp.text().await {
-                    return Ok(txt);
+        let mut urls = vec![primary_url.to_string()];
+        if !backup_url.is_empty() && backup_url != primary_url {
+            urls.push(backup_url.to_string());
+        }
+        let mut last_err = String::from("请求文本失败");
+        for attempt in 0..3usize {
+            if attempt > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(500 * attempt as u64)).await;
+            }
+            for url in &urls {
+                endpoints::pace_mirror_request(url).await;
+                match client.get(url).send().await {
+                    Ok(resp) => {
+                        let status = resp.status();
+                        if status.as_u16() == 429 || status.as_u16() == 503 {
+                            last_err = format!("HTTP {} ({})", status, url);
+                            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                            continue;
+                        }
+                        if !status.is_success() {
+                            last_err = format!("HTTP {} ({})", status, url);
+                            continue;
+                        }
+                        match resp.text().await {
+                            Ok(txt) => {
+                                let trimmed = txt.trim();
+                                // 对齐 PCL2 RequireJson 检查：确保返回的是闭合 JSON，防止网关报错 HTML 混入
+                                if (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                                    || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+                                {
+                                    return Ok(txt);
+                                }
+                                last_err = format!("返回内容不是完整 JSON ({})", url);
+                            }
+                            Err(e) => last_err = format!("读取响应文本失败: {}", e),
+                        }
+                    }
+                    Err(e) => last_err = format!("请求失败: {}", e),
                 }
             }
         }
-        let resp = client
-            .get(backup_url)
-            .send()
-            .await
-            .map_err(|e| format!("请求失败: {}", e))?;
-        resp.text().await.map_err(|e| format!("读取响应失败: {}", e))
+        Err(last_err)
     }
 
-    /// 通用高并发批量下载池（使用 Semaphore 控制并发，实时派发进度）
+    /// 通用高并发批量下载池（使用 Semaphore 控制并发 + BMCLAPI 节流 + 临时文件原子校验 + 失败汇总报告）
     async fn execute_batch_downloads(
         app: &AppHandle,
         version_id: &str,
@@ -184,10 +430,10 @@ impl VersionInstaller {
         concurrency: usize,
         client: &reqwest::Client,
         tasks: Vec<BatchDownloadTask>,
-    ) {
+    ) -> Result<(), String> {
         let total = tasks.len();
         if total == 0 {
-            return;
+            return Ok(());
         }
 
         let van_ver_owned = vanilla_version.map(|s| s.to_string());
@@ -206,6 +452,8 @@ impl VersionInstaller {
 
         let semaphore = Arc::new(Semaphore::new(concurrency.max(1)));
         let completed = Arc::new(AtomicUsize::new(0));
+        let failures: Arc<std::sync::Mutex<Vec<String>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut join_set = JoinSet::new();
         let step_interval = (total / 40).max(1);
 
@@ -213,6 +461,7 @@ impl VersionInstaller {
             let sem = semaphore.clone();
             let cli = client.clone();
             let comp = completed.clone();
+            let fail_list = failures.clone();
             let app_clone = app.clone();
             let ver_id = version_id.to_string();
             let van_ver = van_ver_owned.clone();
@@ -221,39 +470,24 @@ impl VersionInstaller {
             join_set.spawn(async move {
                 let _permit = sem.acquire_owned().await.ok();
 
-                let already_valid = if task.target_path.is_file() {
-                    if let Ok(meta) = fs::metadata(&task.target_path) {
-                        if let Some(exp_size) = task.expected_size {
-                            meta.len() == exp_size
-                        } else {
-                            meta.len() > 0
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if !already_valid {
-                    if let Some(parent) = task.target_path.parent() {
-                        let _ = fs::create_dir_all(parent);
-                    }
-                    if let Ok(bytes) = Self::fetch_bytes_with_fallback(
-                        &cli,
-                        &task.primary_url,
-                        task.backup_url.as_deref(),
-                    )
-                    .await
-                    {
-                        if let Ok(mut f) = File::create(&task.target_path) {
-                            let _ = f.write_all(&bytes);
+                if let Err(err_msg) = Self::download_file_with_retry(
+                    &cli,
+                    &task.urls,
+                    &task.target_path,
+                    task.expected_size,
+                    |_, _| {},
+                )
+                .await
+                {
+                    if let Ok(mut list) = fail_list.lock() {
+                        if list.len() < 10 {
+                            list.push(err_msg);
+                        } else if list.len() == 10 {
+                            list.push("...".to_string());
                         }
                     }
-                }
-
-                // 若该任务标记为需解压 Natives，落盘后立即安全解压
-                if let Some((natives_dir, excludes)) = task.extract_natives {
+                } else if let Some((natives_dir, excludes)) = task.extract_natives {
+                    // 若该任务标记为需解压 Natives，校验落盘成功后立即安全解压
                     if task.target_path.is_file() {
                         let _ = MinecraftLauncher::extract_native_jar(
                             &task.target_path,
@@ -284,6 +518,17 @@ impl VersionInstaller {
         }
 
         while join_set.join_next().await.is_some() {}
+
+        let recorded_failures = failures.lock().unwrap().clone();
+        if !recorded_failures.is_empty() {
+            return Err(format!(
+                "{} 阶段有文件下载失败（已完成的文件已缓存，可直接点击重试补全）：\n{}",
+                stage_label,
+                recorded_failures.join("\n")
+            ));
+        }
+
+        Ok(())
     }
 
     /// 从版本 libraries JSON 数组中收集适用于当前平台的所有支持库与 Natives 下载任务
@@ -334,12 +579,10 @@ impl VersionInstaller {
                 if let (Some(path_str), Some(url_str)) = (&artifact.path, &artifact.url) {
                     if !url_str.trim().is_empty() {
                         let rel_path = MinecraftLauncher::artifact_path_to_pathbuf(path_str);
-                        let (primary_url, backup_url) =
-                            endpoints::resolve_mojang_download_urls(url_str, prefer_mirror);
+                        let urls = endpoints::resolve_mojang_library_urls(url_str, prefer_mirror);
                         tasks.push(BatchDownloadTask {
                             target_path: libraries_dir.join(rel_path),
-                            primary_url,
-                            backup_url: Some(backup_url),
+                            urls,
                             expected_size: artifact.size,
                             extract_natives: extract_opt,
                         });
@@ -348,12 +591,14 @@ impl VersionInstaller {
             } else if parsed_lib.downloads.is_none() {
                 let (rel_path, url_subpath) = Self::maven_to_path_and_url(&parsed_lib.name);
                 let repo_base = parsed_lib.url.as_deref().or(default_maven_base);
-                let (primary_url, backup_url) =
-                    endpoints::resolve_maven_library_urls(repo_base, &url_subpath, prefer_mirror);
+                let urls = endpoints::resolve_maven_library_urls_list(
+                    repo_base,
+                    &url_subpath,
+                    prefer_mirror,
+                );
                 tasks.push(BatchDownloadTask {
                     target_path: libraries_dir.join(rel_path),
-                    primary_url,
-                    backup_url: Some(backup_url),
+                    urls,
                     expected_size: None,
                     extract_natives: extract_opt,
                 });
@@ -365,8 +610,7 @@ impl VersionInstaller {
             {
                 if let (Some(path_str), Some(url_str)) = (&native_art.path, &native_art.url) {
                     let rel_path = MinecraftLauncher::artifact_path_to_pathbuf(path_str);
-                    let (primary_url, backup_url) =
-                        endpoints::resolve_mojang_download_urls(url_str, prefer_mirror);
+                    let urls = endpoints::resolve_mojang_library_urls(url_str, prefer_mirror);
                     let extract_cls = natives_dir.map(|nd| {
                         (
                             nd.to_path_buf(),
@@ -375,8 +619,7 @@ impl VersionInstaller {
                     });
                     tasks.push(BatchDownloadTask {
                         target_path: libraries_dir.join(rel_path),
-                        primary_url,
-                        backup_url: Some(backup_url),
+                        urls,
                         expected_size: native_art.size,
                         extract_natives: extract_cls,
                     });
@@ -692,10 +935,7 @@ impl VersionInstaller {
         let target_os = platform::mc_os_name();
         let target_arch = platform::mc_os_arch();
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = endpoints::shared_http_client();
 
         // 1. 获取并保存版本元数据 JSON
         emit_progress("正在获取原版元数据 JSON...", 5.0, "拉取清单", false, None);
@@ -704,7 +944,7 @@ impl VersionInstaller {
             endpoints::resolve_mojang_download_urls(&meta_url, prefer_mirror);
 
         let json_text =
-            Self::fetch_text_with_fallback(&client, &primary_meta_url, &backup_meta_url)
+            Self::fetch_text_with_fallback(client, &primary_meta_url, &backup_meta_url)
                 .await
                 .map_err(|e| format!("无法下载版本 JSON: {}", e))?;
 
@@ -722,7 +962,7 @@ impl VersionInstaller {
         let ver_detail: VersionDetailJson = serde_json::from_str(&json_text)
             .map_err(|e| format!("解析版本 JSON 结构失败: {}", e))?;
 
-        // 2. 下载 client.jar (10% ~ 40%)
+        // 2. 下载或本地复用 client.jar (10% ~ 40%)
         emit_progress(
             "正在准备下载游戏核心 (client.jar)...",
             10.0,
@@ -733,36 +973,54 @@ impl VersionInstaller {
 
         if let Some(ref downloads) = ver_detail.downloads {
             if let Some(ref client_art) = downloads.client {
+                let jar_file_path = version_dir.join(format!("{}.jar", final_target_name));
+
+                // 对齐 PCL2 CheckExistingFiles：若同目录下原版版本已有通过校验的 client.jar，直接本地复制免重复下载
+                if !Self::is_file_valid(&jar_file_path, Some(client_art.size))
+                    && final_target_name != vanilla_version
+                {
+                    let vanilla_jar = game_dir
+                        .join("versions")
+                        .join(&vanilla_version)
+                        .join(format!("{}.jar", vanilla_version));
+                    if Self::is_file_valid(&vanilla_jar, Some(client_art.size)) {
+                        let _ = fs::copy(&vanilla_jar, &jar_file_path);
+                    }
+                }
+
                 let (primary_client_url, backup_client_url) =
                     endpoints::resolve_mojang_download_urls(&client_art.url, prefer_mirror);
+                let client_urls = vec![primary_client_url, backup_client_url];
+                let mut last_emit_pct = 0.0f32;
 
-                let mut jar_resp = match client.get(&primary_client_url).send().await {
-                    Ok(r) if r.status().is_success() => r,
-                    _ => client
-                        .get(&backup_client_url)
-                        .send()
-                        .await
-                        .map_err(|e| format!("下载 client.jar 请求失败: {}", e))?,
-                };
-
-                let jar_file_path = version_dir.join(format!("{}.jar", final_target_name));
-                let mut file = File::create(&jar_file_path).map_err(|e| e.to_string())?;
-
-                let total_size = client_art.size.max(1) as f32;
-                let mut downloaded: f32 = 0.0;
-
-                while let Some(chunk) = jar_resp.chunk().await.map_err(|e| e.to_string())? {
-                    file.write_all(&chunk).map_err(|e| e.to_string())?;
-                    downloaded += chunk.len() as f32;
-
-                    let pct = 10.0 + (downloaded / total_size) * 30.0;
-                    let mb_text = format!(
-                        "{:.1}MB / {:.1}MB",
-                        downloaded / (1024.0 * 1024.0),
-                        total_size / (1024.0 * 1024.0)
-                    );
-                    emit_progress("正在高速下载核心 JAR 文件...", pct, &mb_text, false, None);
-                }
+                Self::download_file_with_retry(
+                    client,
+                    &client_urls,
+                    &jar_file_path,
+                    Some(client_art.size),
+                    |downloaded, total| {
+                        let total_f = total.max(1) as f32;
+                        let dl_f = downloaded as f32;
+                        let pct = 10.0 + (dl_f / total_f) * 30.0;
+                        if (pct - last_emit_pct).abs() >= 0.8 || downloaded >= total {
+                            last_emit_pct = pct;
+                            let mb_text = format!(
+                                "{:.1}MB / {:.1}MB",
+                                dl_f / (1024.0 * 1024.0),
+                                total_f / (1024.0 * 1024.0)
+                            );
+                            emit_progress(
+                                "正在高速下载核心 JAR 文件...",
+                                pct,
+                                &mb_text,
+                                false,
+                                None,
+                            );
+                        }
+                    },
+                )
+                .await
+                .map_err(|e| format!("下载核心 client.jar 失败: {}", e))?;
             }
         }
 
@@ -794,10 +1052,10 @@ impl VersionInstaller {
                 40.0,
                 65.0,
                 DEFAULT_LIBRARY_CONCURRENCY,
-                &client,
+                client,
                 lib_tasks,
             )
-            .await;
+            .await?;
         }
 
         // 4. 下载并补全 Assets 资源索引与音频/语言包对象 (65% ~ 85%)
@@ -817,59 +1075,56 @@ impl VersionInstaller {
             let (primary_idx_url, backup_idx_url) =
                 endpoints::resolve_mojang_download_urls(&asset_meta.url, prefer_mirror);
 
-            if let Ok(idx_text) =
-                Self::fetch_text_with_fallback(&client, &primary_idx_url, &backup_idx_url).await
-            {
-                let idx_path = indexes_dir.join(format!("{}.json", asset_meta.id));
-                let _ = fs::write(&idx_path, &idx_text);
+            let idx_text =
+                Self::fetch_text_with_fallback(client, &primary_idx_url, &backup_idx_url)
+                    .await
+                    .map_err(|e| format!("拉取资源索引 ({}.json) 失败: {}", asset_meta.id, e))?;
 
-                if let Ok(index_file) = serde_json::from_str::<AssetIndexFile>(&idx_text) {
-                    let mut asset_tasks = Vec::new();
-                    let mut seen_hashes = std::collections::HashSet::new();
+            let idx_path = indexes_dir.join(format!("{}.json", asset_meta.id));
+            let _ = fs::write(&idx_path, &idx_text);
 
-                    for entry in index_file.objects.values() {
-                        if entry.hash.len() < 2 || !seen_hashes.insert(entry.hash.clone()) {
-                            continue;
-                        }
-                        let prefix = &entry.hash[0..2];
-                        let target_obj_path = objects_dir.join(prefix).join(&entry.hash);
-                        if target_obj_path.is_file() {
-                            if let Ok(m) = fs::metadata(&target_obj_path) {
-                                if m.len() == entry.size {
-                                    continue;
-                                }
-                            }
-                        }
-                        let (primary_url, backup_url) =
-                            endpoints::resolve_asset_object_urls(&entry.hash, prefer_mirror);
-                        asset_tasks.push(BatchDownloadTask {
-                            target_path: target_obj_path,
-                            primary_url,
-                            backup_url: Some(backup_url),
-                            expected_size: Some(entry.size),
-                            extract_natives: None,
-                        });
-                    }
+            let index_file: AssetIndexFile = serde_json::from_str(&idx_text)
+                .map_err(|e| format!("解析资源索引 ({}.json) 失败: {}", asset_meta.id, e))?;
 
-                    if !asset_tasks.is_empty() {
-                        Self::execute_batch_downloads(
-                            &app,
-                            &final_target_name,
-                            Some(&vanilla_version),
-                            "正在并发补全游戏音效与语言包资源",
-                            68.0,
-                            85.0,
-                            DEFAULT_ASSET_CONCURRENCY,
-                            &client,
-                            asset_tasks,
-                        )
-                        .await;
-                    }
+            let mut asset_tasks = Vec::new();
+            let mut seen_hashes = std::collections::HashSet::new();
+
+            for entry in index_file.objects.values() {
+                if entry.hash.len() < 2 || !seen_hashes.insert(entry.hash.clone()) {
+                    continue;
                 }
+                let prefix = &entry.hash[0..2];
+                let target_obj_path = objects_dir.join(prefix).join(&entry.hash);
+                if Self::is_file_valid(&target_obj_path, Some(entry.size)) {
+                    continue;
+                }
+                let (primary_url, backup_url) =
+                    endpoints::resolve_asset_object_urls(&entry.hash, prefer_mirror);
+                asset_tasks.push(BatchDownloadTask {
+                    target_path: target_obj_path,
+                    urls: vec![primary_url, backup_url],
+                    expected_size: Some(entry.size),
+                    extract_natives: None,
+                });
+            }
+
+            if !asset_tasks.is_empty() {
+                Self::execute_batch_downloads(
+                    &app,
+                    &final_target_name,
+                    Some(&vanilla_version),
+                    "正在并发补全游戏音效与语言包资源",
+                    68.0,
+                    85.0,
+                    DEFAULT_ASSET_CONCURRENCY,
+                    client,
+                    asset_tasks,
+                )
+                .await?;
             }
         }
 
-        // 5. 可选：自动合成加载器 (Fabric / Quilt / Forge / NeoForge) (85% ~ 98%)
+        // 5. 可选：自动合成加载器 (Fabric / Quilt / Forge / NeoForge / OptiFine) (85% ~ 98%)
         match loader_type.as_deref() {
             Some("fabric") => {
                 emit_progress(
@@ -881,283 +1136,263 @@ impl VersionInstaller {
                 );
                 let loader_urls =
                     endpoints::fabric_loader_list_urls(&vanilla_version, prefer_mirror);
+                let loaders: Vec<FabricLoaderEntry> =
+                    crate::download::DownloadManager::fetch_json_with_retry(&loader_urls)
+                        .await
+                        .map_err(|e| format!("查询 Fabric Loader 清单失败: {}", e))?;
 
-                let mut loaders_opt: Option<Vec<FabricLoaderEntry>> = None;
-                for url in &loader_urls {
-                    if let Ok(resp) = client.get(url).send().await {
-                        if let Ok(parsed) = resp.json::<Vec<FabricLoaderEntry>>().await {
-                            loaders_opt = Some(parsed);
-                            break;
-                        }
-                    }
+                let chosen_entry = if let Some(ref req_ver) = loader_version {
+                    loaders.iter().find(|l| &l.loader.version == req_ver)
+                } else {
+                    loaders
+                        .iter()
+                        .find(|l| l.loader.stable)
+                        .or_else(|| loaders.first())
                 }
+                .ok_or_else(|| format!("未找到匹配的 Fabric Loader 版本 ({:?})", loader_version))?;
 
-                if let Some(loaders) = loaders_opt {
-                    let chosen_entry = if let Some(ref req_ver) = loader_version {
-                        loaders.iter().find(|l| &l.loader.version == req_ver)
-                    } else {
-                        loaders
-                            .iter()
-                            .find(|l| l.loader.stable)
-                            .or_else(|| loaders.first())
-                    };
+                let loader_ver = &chosen_entry.loader.version;
+                let profile_urls = endpoints::fabric_profile_json_urls(
+                    &vanilla_version,
+                    loader_ver,
+                    prefer_mirror,
+                );
 
-                    if let Some(entry) = chosen_entry {
-                        let loader_ver = &entry.loader.version;
-                        let profile_urls = endpoints::fabric_profile_json_urls(
-                            &vanilla_version,
-                            loader_ver,
-                            prefer_mirror,
-                        );
+                let fabric_profile: LoaderProfileJson =
+                    crate::download::DownloadManager::fetch_json_with_retry(&profile_urls)
+                        .await
+                        .map_err(|e| format!("拉取 Fabric Profile JSON 失败: {}", e))?;
 
-                        let mut profile_opt: Option<LoaderProfileJson> = None;
-                        for p_url in &profile_urls {
-                            if let Ok(resp) = client.get(p_url).send().await {
-                                if let Ok(prof) = resp.json::<LoaderProfileJson>().await {
-                                    profile_opt = Some(prof);
-                                    break;
-                                }
-                            }
-                        }
+                let fab_tasks = Self::collect_library_tasks(
+                    &fabric_profile.libraries,
+                    &libraries_dir,
+                    None,
+                    prefer_mirror,
+                    target_os,
+                    target_arch,
+                    Some(endpoints::FABRIC_MAVEN_OFFICIAL),
+                );
+                Self::execute_batch_downloads(
+                    &app,
+                    &final_target_name,
+                    Some(&vanilla_version),
+                    &format!("正在并发下载 Fabric {} 依赖库", loader_ver),
+                    88.0,
+                    98.0,
+                    DEFAULT_LIBRARY_CONCURRENCY,
+                    client,
+                    fab_tasks,
+                )
+                .await?;
 
-                        if let Some(fabric_profile) = profile_opt {
-                            let fab_tasks = Self::collect_library_tasks(
-                                &fabric_profile.libraries,
-                                &libraries_dir,
-                                None,
-                                prefer_mirror,
-                                target_os,
-                                target_arch,
-                                Some(endpoints::FABRIC_MAVEN_OFFICIAL),
-                            );
-                            Self::execute_batch_downloads(
-                                &app,
-                                &final_target_name,
-                                Some(&vanilla_version),
-                                &format!("正在并发下载 Fabric {} 依赖库", loader_ver),
-                                88.0,
-                                98.0,
-                                DEFAULT_LIBRARY_CONCURRENCY,
-                                &client,
-                                fab_tasks,
-                            )
-                            .await;
-
-                            Self::merge_loader_profile_into_version_json(
-                                &mut original_json_val,
-                                fabric_profile,
-                                &final_target_name,
-                            );
-                            if let Ok(merged_str) =
-                                serde_json::to_string_pretty(&original_json_val)
-                            {
-                                let _ = fs::write(&json_file_path, merged_str);
-                            }
-                        }
-                    }
-                }
+                Self::merge_loader_profile_into_version_json(
+                    &mut original_json_val,
+                    fabric_profile,
+                    &final_target_name,
+                );
+                let merged_str = serde_json::to_string_pretty(&original_json_val)
+                    .map_err(|e| format!("序列化合并后的版本 JSON 失败: {}", e))?;
+                fs::write(&json_file_path, merged_str)
+                    .map_err(|e| format!("写入合并后的版本 JSON 失败: {}", e))?;
             }
             Some("quilt") => {
-                if let Some(ref loader_ver) = loader_version {
-                    let profile_urls = endpoints::quilt_profile_json_urls(
-                        &vanilla_version,
-                        loader_ver,
-                        prefer_mirror,
-                    );
-                    for p_url in &profile_urls {
-                        if let Ok(resp) = client.get(p_url).send().await {
-                            if let Ok(quilt_profile) = resp.json::<LoaderProfileJson>().await {
-                                let quilt_tasks = Self::collect_library_tasks(
-                                    &quilt_profile.libraries,
-                                    &libraries_dir,
-                                    None,
-                                    prefer_mirror,
-                                    target_os,
-                                    target_arch,
-                                    Some(endpoints::QUILT_MAVEN_OFFICIAL),
-                                );
-                                Self::execute_batch_downloads(
-                                    &app,
-                                    &final_target_name,
-                                    Some(&vanilla_version),
-                                    &format!("正在并发下载 Quilt {} 依赖库", loader_ver),
-                                    88.0,
-                                    98.0,
-                                    DEFAULT_LIBRARY_CONCURRENCY,
-                                    &client,
-                                    quilt_tasks,
-                                )
-                                .await;
+                let loader_ver = loader_version
+                    .as_deref()
+                    .ok_or_else(|| "未指定 Quilt Loader 版本".to_string())?;
+                let profile_urls = endpoints::quilt_profile_json_urls(
+                    &vanilla_version,
+                    loader_ver,
+                    prefer_mirror,
+                );
+                let quilt_profile: LoaderProfileJson =
+                    crate::download::DownloadManager::fetch_json_with_retry(&profile_urls)
+                        .await
+                        .map_err(|e| format!("拉取 Quilt Profile JSON 失败: {}", e))?;
 
-                                Self::merge_loader_profile_into_version_json(
-                                    &mut original_json_val,
-                                    quilt_profile,
-                                    &final_target_name,
-                                );
-                                if let Ok(merged_str) =
-                                    serde_json::to_string_pretty(&original_json_val)
-                                {
-                                    let _ = fs::write(&json_file_path, merged_str);
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
+                let quilt_tasks = Self::collect_library_tasks(
+                    &quilt_profile.libraries,
+                    &libraries_dir,
+                    None,
+                    prefer_mirror,
+                    target_os,
+                    target_arch,
+                    Some(endpoints::QUILT_MAVEN_OFFICIAL),
+                );
+                Self::execute_batch_downloads(
+                    &app,
+                    &final_target_name,
+                    Some(&vanilla_version),
+                    &format!("正在并发下载 Quilt {} 依赖库", loader_ver),
+                    88.0,
+                    98.0,
+                    DEFAULT_LIBRARY_CONCURRENCY,
+                    client,
+                    quilt_tasks,
+                )
+                .await?;
+
+                Self::merge_loader_profile_into_version_json(
+                    &mut original_json_val,
+                    quilt_profile,
+                    &final_target_name,
+                );
+                let merged_str = serde_json::to_string_pretty(&original_json_val)
+                    .map_err(|e| format!("序列化合并后的版本 JSON 失败: {}", e))?;
+                fs::write(&json_file_path, merged_str)
+                    .map_err(|e| format!("写入合并后的版本 JSON 失败: {}", e))?;
             }
             Some("forge") | Some("neoforge") => {
                 let is_neoforge = loader_type.as_deref() == Some("neoforge");
                 let label_name = if is_neoforge { "NeoForge" } else { "Forge" };
-                if let Some(ref loader_ver) = loader_version {
-                    emit_progress(
-                        &format!("正在下载 {} {} 安装包...", label_name, loader_ver),
-                        86.0,
-                        "下载安装器",
-                        false,
-                        None,
-                    );
+                let loader_ver = loader_version
+                    .as_deref()
+                    .ok_or_else(|| format!("未指定 {} 版本", label_name))?;
 
-                    let (primary_inst_url, backup_inst_url) = if is_neoforge {
-                        endpoints::neoforge_installer_urls(loader_ver, prefer_mirror)
-                    } else {
-                        endpoints::forge_installer_urls(&vanilla_version, loader_ver, prefer_mirror)
-                    };
+                emit_progress(
+                    &format!("正在下载 {} {} 安装包...", label_name, loader_ver),
+                    86.0,
+                    "下载安装器",
+                    false,
+                    None,
+                );
 
-                    if let Ok(inst_bytes) = Self::fetch_bytes_with_fallback(
-                        &client,
-                        &primary_inst_url,
-                        Some(&backup_inst_url),
-                    )
-                    .await
-                    {
-                        emit_progress(
-                            &format!("正在解包并合成 {} {} 元数据...", label_name, loader_ver),
-                            90.0,
-                            "解包合成",
-                            false,
-                            None,
-                        );
-                        if let Ok((loader_profile, extra_libs)) =
-                            Self::extract_forge_or_neoforge_installer(&inst_bytes, &libraries_dir)
-                        {
-                            let mut all_forge_libs = loader_profile.libraries.clone();
-                            all_forge_libs.extend(extra_libs);
+                let (primary_inst_url, backup_inst_url) = if is_neoforge {
+                    endpoints::neoforge_installer_urls(loader_ver, prefer_mirror)
+                } else {
+                    endpoints::forge_installer_urls(&vanilla_version, loader_ver, prefer_mirror)
+                };
 
-                            let default_repo = if is_neoforge {
-                                endpoints::NEOFORGE_MAVEN_OFFICIAL
-                            } else {
-                                endpoints::FORGE_MAVEN_OFFICIAL
-                            };
+                let inst_bytes = Self::fetch_bytes_with_fallback(
+                    client,
+                    &primary_inst_url,
+                    Some(&backup_inst_url),
+                )
+                .await
+                .map_err(|e| format!("下载 {} {} 安装包失败: {}", label_name, loader_ver, e))?;
 
-                            let forge_tasks = Self::collect_library_tasks(
-                                &all_forge_libs,
-                                &libraries_dir,
-                                None,
-                                prefer_mirror,
-                                target_os,
-                                target_arch,
-                                Some(default_repo),
-                            );
-                            Self::execute_batch_downloads(
-                                &app,
-                                &final_target_name,
-                                Some(&vanilla_version),
-                                &format!("正在并发下载 {} {} 依赖库", label_name, loader_ver),
-                                91.0,
-                                98.0,
-                                DEFAULT_LIBRARY_CONCURRENCY,
-                                &client,
-                                forge_tasks,
-                            )
-                            .await;
+                emit_progress(
+                    &format!("正在解包并合成 {} {} 元数据...", label_name, loader_ver),
+                    90.0,
+                    "解包合成",
+                    false,
+                    None,
+                );
+                let (loader_profile, extra_libs) =
+                    Self::extract_forge_or_neoforge_installer(&inst_bytes, &libraries_dir)?;
 
-                            Self::merge_loader_profile_into_version_json(
-                                &mut original_json_val,
-                                loader_profile,
-                                &final_target_name,
-                            );
-                            if let Ok(merged_str) =
-                                serde_json::to_string_pretty(&original_json_val)
-                            {
-                                let _ = fs::write(&json_file_path, merged_str);
-                            }
-                        }
-                    }
-                }
+                let mut all_forge_libs = loader_profile.libraries.clone();
+                all_forge_libs.extend(extra_libs);
+
+                let default_repo = if is_neoforge {
+                    endpoints::NEOFORGE_MAVEN_OFFICIAL
+                } else {
+                    endpoints::FORGE_MAVEN_OFFICIAL
+                };
+
+                let forge_tasks = Self::collect_library_tasks(
+                    &all_forge_libs,
+                    &libraries_dir,
+                    None,
+                    prefer_mirror,
+                    target_os,
+                    target_arch,
+                    Some(default_repo),
+                );
+                Self::execute_batch_downloads(
+                    &app,
+                    &final_target_name,
+                    Some(&vanilla_version),
+                    &format!("正在并发下载 {} {} 依赖库", label_name, loader_ver),
+                    91.0,
+                    98.0,
+                    DEFAULT_LIBRARY_CONCURRENCY,
+                    client,
+                    forge_tasks,
+                )
+                .await?;
+
+                Self::merge_loader_profile_into_version_json(
+                    &mut original_json_val,
+                    loader_profile,
+                    &final_target_name,
+                );
+                let merged_str = serde_json::to_string_pretty(&original_json_val)
+                    .map_err(|e| format!("序列化合并后的版本 JSON 失败: {}", e))?;
+                fs::write(&json_file_path, merged_str)
+                    .map_err(|e| format!("写入合并后的版本 JSON 失败: {}", e))?;
             }
             Some("optifine") => {
-                if let Some(ref loader_ver) = loader_version {
-                    if let Some((of_type, of_patch)) = loader_ver.rsplit_once('_') {
-                        emit_progress(
-                            &format!("正在下载 OptiFine {} 安装包...", loader_ver),
-                            86.0,
-                            "下载安装器",
-                            false,
-                            None,
-                        );
-                        let inst_url =
-                            endpoints::optifine_installer_url(&vanilla_version, of_type, of_patch);
-                        if let Ok(inst_bytes) =
-                            Self::fetch_bytes_with_fallback(&client, &inst_url, None).await
-                        {
-                            emit_progress(
-                                &format!("正在解包并合成 OptiFine {}...", loader_ver),
-                                92.0,
-                                "解包合成",
-                                false,
-                                None,
-                            );
-                            let client_jar_path =
-                                version_dir.join(format!("{}.jar", final_target_name));
-                            if let Ok((loader_profile, extra_libs)) =
-                                Self::extract_optifine_installer(
-                                    &inst_bytes,
-                                    &vanilla_version,
-                                    loader_ver,
-                                    &client_jar_path,
-                                    &libraries_dir,
-                                    &final_target_name,
-                                    &original_json_val,
-                                )
-                            {
-                                if !extra_libs.is_empty() {
-                                    let of_tasks = Self::collect_library_tasks(
-                                        &extra_libs,
-                                        &libraries_dir,
-                                        None,
-                                        prefer_mirror,
-                                        target_os,
-                                        target_arch,
-                                        None,
-                                    );
-                                    Self::execute_batch_downloads(
-                                        &app,
-                                        &final_target_name,
-                                        Some(&vanilla_version),
-                                        &format!("正在并发下载 OptiFine {} 依赖库", loader_ver),
-                                        94.0,
-                                        98.0,
-                                        DEFAULT_LIBRARY_CONCURRENCY,
-                                        &client,
-                                        of_tasks,
-                                    )
-                                    .await;
-                                }
+                let loader_ver = loader_version
+                    .as_deref()
+                    .ok_or_else(|| "未指定 OptiFine 版本".to_string())?;
+                let (of_type, of_patch) = loader_ver
+                    .rsplit_once('_')
+                    .ok_or_else(|| format!("非法的 OptiFine 版本格式: {}", loader_ver))?;
 
-                                Self::merge_loader_profile_into_version_json(
-                                    &mut original_json_val,
-                                    loader_profile,
-                                    &final_target_name,
-                                );
-                                if let Ok(merged_str) =
-                                    serde_json::to_string_pretty(&original_json_val)
-                                {
-                                    let _ = fs::write(&json_file_path, merged_str);
-                                }
-                            }
-                        }
-                    }
+                emit_progress(
+                    &format!("正在下载 OptiFine {} 安装包...", loader_ver),
+                    86.0,
+                    "下载安装器",
+                    false,
+                    None,
+                );
+                let inst_url =
+                    endpoints::optifine_installer_url(&vanilla_version, of_type, of_patch);
+                let inst_bytes = Self::fetch_bytes_with_fallback(client, &inst_url, None)
+                    .await
+                    .map_err(|e| format!("下载 OptiFine {} 安装包失败: {}", loader_ver, e))?;
+
+                emit_progress(
+                    &format!("正在解包并合成 OptiFine {}...", loader_ver),
+                    92.0,
+                    "解包合成",
+                    false,
+                    None,
+                );
+                let client_jar_path = version_dir.join(format!("{}.jar", final_target_name));
+                let (loader_profile, extra_libs) = Self::extract_optifine_installer(
+                    &inst_bytes,
+                    &vanilla_version,
+                    loader_ver,
+                    &client_jar_path,
+                    &libraries_dir,
+                    &final_target_name,
+                    &original_json_val,
+                )?;
+
+                if !extra_libs.is_empty() {
+                    let of_tasks = Self::collect_library_tasks(
+                        &extra_libs,
+                        &libraries_dir,
+                        None,
+                        prefer_mirror,
+                        target_os,
+                        target_arch,
+                        None,
+                    );
+                    Self::execute_batch_downloads(
+                        &app,
+                        &final_target_name,
+                        Some(&vanilla_version),
+                        &format!("正在并发下载 OptiFine {} 依赖库", loader_ver),
+                        94.0,
+                        98.0,
+                        DEFAULT_LIBRARY_CONCURRENCY,
+                        client,
+                        of_tasks,
+                    )
+                    .await?;
                 }
+
+                Self::merge_loader_profile_into_version_json(
+                    &mut original_json_val,
+                    loader_profile,
+                    &final_target_name,
+                );
+                let merged_str = serde_json::to_string_pretty(&original_json_val)
+                    .map_err(|e| format!("序列化合并后的版本 JSON 失败: {}", e))?;
+                fs::write(&json_file_path, merged_str)
+                    .map_err(|e| format!("写入合并后的版本 JSON 失败: {}", e))?;
             }
             _ => {}
         }
@@ -1195,16 +1430,13 @@ impl VersionInstaller {
         let cfg = ConfigManager::load();
         let prefer_mirror = cfg.prefer_mirror;
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = endpoints::shared_http_client();
 
         let (primary_meta_url, backup_meta_url) =
             endpoints::resolve_mojang_download_urls(&meta_url, prefer_mirror);
 
         let meta_text =
-            Self::fetch_text_with_fallback(&client, &primary_meta_url, &backup_meta_url)
+            Self::fetch_text_with_fallback(client, &primary_meta_url, &backup_meta_url)
                 .await
                 .map_err(|e| format!("获取版本元数据失败: {}", e))?;
 
@@ -1220,7 +1452,7 @@ impl VersionInstaller {
             }
         };
 
-        emit_progress("正在下载官方服务端核心...", 30.0, "下载中", false, None);
+        emit_progress("正在下载官方服务端核心...", 25.0, "下载中", false, None);
 
         let (primary_server_url, backup_server_url) =
             endpoints::resolve_mojang_download_urls(&server_art.url, prefer_mirror);
@@ -1232,15 +1464,31 @@ impl VersionInstaller {
 
         let jar_name = format!("{}-server.jar", version_id);
         let server_jar_path = target_path.join(&jar_name);
-        let bytes = Self::fetch_bytes_with_fallback(
-            &client,
-            &primary_server_url,
-            Some(&backup_server_url),
-        )
-        .await?;
+        let server_urls = vec![primary_server_url, backup_server_url];
+        let mut last_emit_pct = 0.0f32;
 
-        fs::write(&server_jar_path, &bytes)
-            .map_err(|e| format!("写入服务端 jar 失败: {}", e))?;
+        Self::download_file_with_retry(
+            client,
+            &server_urls,
+            &server_jar_path,
+            Some(server_art.size),
+            |downloaded, total| {
+                let total_f = total.max(1) as f32;
+                let dl_f = downloaded as f32;
+                let pct = 25.0 + (dl_f / total_f) * 63.0;
+                if (pct - last_emit_pct).abs() >= 1.0 || downloaded >= total {
+                    last_emit_pct = pct;
+                    let mb_text = format!(
+                        "{:.1}MB / {:.1}MB",
+                        dl_f / (1024.0 * 1024.0),
+                        total_f / (1024.0 * 1024.0)
+                    );
+                    emit_progress("正在下载官方服务端核心...", pct, &mb_text, false, None);
+                }
+            },
+        )
+        .await
+        .map_err(|e| format!("下载服务端核心失败: {}", e))?;
 
         emit_progress("正在生成开服脚本与配置文件...", 90.0, "", false, None);
 
@@ -1331,6 +1579,44 @@ mod tests {
         let game_args = orig_json["arguments"]["game"].as_array().unwrap();
         assert!(game_args.contains(&serde_json::json!("--tweakClass")));
         assert!(game_args.contains(&serde_json::json!("optifine.OptiFineTweaker")));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_is_file_valid_rejects_html_jar_and_size_mismatch() {
+        let temp_dir = std::env::temp_dir().join(format!("pcl_valid_test_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let fake_jar = temp_dir.join("corrupted.jar");
+        let html_err = b"<html><body>429 Too Many Requests</body></html>";
+        fs::write(&fake_jar, html_err).unwrap();
+
+        // 即使字节数碰巧一致，非 PK\x03\x04 开头的 .jar 也必须被拒绝
+        assert!(!VersionInstaller::is_file_valid(
+            &fake_jar,
+            Some(html_err.len() as u64)
+        ));
+
+        // 合法 ZIP/JAR 魔数头且尺寸吻合时通过
+        let valid_jar = temp_dir.join("valid.jar");
+        let mut zip_bytes = Vec::new();
+        {
+            let mut zw = ZipWriter::new(io::Cursor::new(&mut zip_bytes));
+            zw.start_file("META-INF/MANIFEST.MF", SimpleFileOptions::default())
+                .unwrap();
+            zw.write_all(b"Manifest-Version: 1.0\n").unwrap();
+            zw.finish().unwrap();
+        }
+        fs::write(&valid_jar, &zip_bytes).unwrap();
+        assert!(VersionInstaller::is_file_valid(
+            &valid_jar,
+            Some(zip_bytes.len() as u64)
+        ));
+        assert!(!VersionInstaller::is_file_valid(
+            &valid_jar,
+            Some(zip_bytes.len() as u64 + 10)
+        ));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

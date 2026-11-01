@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import LaunchView from '@/views/LaunchView.vue'
-import InstanceView from '@/views/InstanceView.vue'
-import DownloadView from '@/views/DownloadView.vue'
-import SetupView from '@/views/SetupView.vue'
-import LinkView from '@/views/LinkView.vue'
-import OtherView from '@/views/OtherView.vue'
 import CrashDialog from '@/components/CrashDialog.vue'
 import PclIcon from '@/components/base/PclIcon.vue'
 import { backend } from '@/services/backend'
 import type { CrashAnalysisResult } from '@/services/backend'
 import { useAppStore } from '@/stores/app'
 import { EQ_PRESETS } from '@/services/audioEngine'
+
+// 非首屏视图按需懒加载，大幅缩减首包解析体积（消除白屏 RC3）
+const InstanceView = defineAsyncComponent(() => import('@/views/InstanceView.vue'))
+const DownloadView = defineAsyncComponent(() => import('@/views/DownloadView.vue'))
+const SetupView = defineAsyncComponent(() => import('@/views/SetupView.vue'))
+const LinkView = defineAsyncComponent(() => import('@/views/LinkView.vue'))
+const OtherView = defineAsyncComponent(() => import('@/views/OtherView.vue'))
 
 const store = useAppStore()
 const crashReport = ref<CrashAnalysisResult | null>(null)
@@ -113,8 +115,19 @@ const handleOpenDefaultMusicDir = async () => {
   }
 }
 
+// 捕获阶段拦截顶栏双击 (e.detail >= 2)，在 Tauri drag.js 监听前阻断双击最大化请求
+const handleHeaderMouseDown = (e: MouseEvent) => {
+  if (e.detail >= 2) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+}
+
 onMounted(async () => {
   await store.initConfig()
+  requestAnimationFrame(() => {
+    backend.showMainWindow()
+  })
   unlistenCrash = await backend.onGameCrash((report) => {
     crashReport.value = report
     store.resetGameState()
@@ -197,12 +210,12 @@ const classicNavItems: Array<{
     <!-- ==================== 1A. 原版 PCL2 经典顶栏 (FormMain.xaml PanTitle 52px) ==================== -->
     <header
       v-if="store.uiStyle === 'classic'"
-      data-tauri-drag-region
+      data-tauri-drag-region="deep"
       class="relative z-10 h-[52px] flex items-center justify-between px-5 bg-white dark:bg-[#1e232b] border-b border-black/8 dark:border-white/10 cursor-default shrink-0"
-      @dblclick.prevent.stop
+      @mousedown.capture="handleHeaderMouseDown"
     >
       <!-- 左侧：原版 ShapeTitleLogo 矢量线条 + PCL 字样；若在二级版本设置页则显示 PanTitleInner 返回栏 -->
-      <div data-tauri-drag-region class="flex items-center gap-2.5">
+      <div data-tauri-drag-region="deep" class="flex items-center gap-2.5">
         <template v-if="store.currentTab === 'instance'">
           <button
             class="w-7 h-7 rounded-full flex items-center justify-center text-[#1D1D1F] dark:text-gray-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
@@ -296,11 +309,11 @@ const classicNavItems: Array<{
     <!-- ==================== 1B. 现代 PBL 顶栏 (40px) ==================== -->
     <header
       v-else
-      data-tauri-drag-region
+      data-tauri-drag-region="deep"
       class="relative z-10 h-10 flex items-center justify-between px-4 bg-pcl-card border-b border-pcl-border cursor-default shrink-0"
-      @dblclick.prevent.stop
+      @mousedown.capture="handleHeaderMouseDown"
     >
-      <div data-tauri-drag-region class="flex items-center gap-2 text-xs font-semibold text-pcl-text pointer-events-none">
+      <div data-tauri-drag-region="deep" class="flex items-center gap-2 text-xs font-semibold text-pcl-text pointer-events-none">
         <img
           src="/favicon.png"
           alt="PBL"

@@ -573,6 +573,18 @@ export const backend = {
   },
 
   // 窗口操作
+  async showMainWindow() {
+    try {
+      await invoke('show_main_window')
+    } catch {
+      try {
+        await getCurrentWindow().show()
+      } catch {
+        // 浏览器环境忽略
+      }
+    }
+  },
+
   async minimizeWindow() {
     try {
       await invoke('minimize_window')

@@ -63,7 +63,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  background-color: transparent;
+  background-color: var(--pcl-color-bg);
   color: var(--pcl-color-text);
   overflow: hidden;
   height: 100vh;

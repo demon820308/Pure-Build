@@ -53,12 +53,18 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "target\release\bundle\portable"
-          if (Test-Path "target\release\pure-build-launcher.exe") {
-            Copy-Item "target\release\pure-build-launcher.exe" -Destination "target\release\bundle\portable\Pure Build Launcher.exe"
+          $mainExe = Get-ChildItem "target\release" -File -Filter "*.exe" | Where-Object { $_.Name -notlike "*setup*" -and $_.Name -notlike "*installer*" } | Select-Object -First 1
+          if ($mainExe) {
+            Write-Host "Found main exe: $($mainExe.FullName)"
+            Copy-Item $mainExe.FullName -Destination "target\release\bundle\portable\Pure Build Launcher.exe"
             Compress-Archive -Path "target\release\bundle\portable\Pure Build Launcher.exe" -DestinationPath "target\release\bundle\portable\Pure-Build-Launcher-Windows-x64-Portable.zip" -Force
-          } elseif (Test-Path "target\release\app.exe") {
-            Copy-Item "target\release\app.exe" -Destination "target\release\bundle\portable\Pure Build Launcher.exe"
-            Compress-Archive -Path "target\release\bundle\portable\Pure Build Launcher.exe" -DestinationPath "target\release\bundle\portable\Pure-Build-Launcher-Windows-x64-Portable.zip" -Force
+          } else {
+            Write-Host "Warning: Main exe not found directly, searching recursively..."
+            $fallbackExe = Get-ChildItem -Recurse -File -Filter "*.exe" "target\release" | Where-Object { $_.Name -notlike "*setup*" -and $_.Name -notlike "*installer*" -and $_.DirectoryName -notlike "*build*" } | Select-Object -First 1
+            if ($fallbackExe) {
+              Copy-Item $fallbackExe.FullName -Destination "target\release\bundle\portable\Pure Build Launcher.exe"
+              Compress-Archive -Path "target\release\bundle\portable\Pure Build Launcher.exe" -DestinationPath "target\release\bundle\portable\Pure-Build-Launcher-Windows-x64-Portable.zip" -Force
+            }
           }
 
       - name: Upload Windows Artifacts
@@ -107,8 +113,12 @@ jobs:
       - name: Package macOS Portable Tarball
         run: |
           mkdir -p target/universal-apple-darwin/release/bundle/portable
-          if [ -d "target/universal-apple-darwin/release/bundle/macos/Pure Build Launcher.app" ]; then
-            tar -czvf "target/universal-apple-darwin/release/bundle/portable/Pure-Build-Launcher-macOS-Universal-Portable.tar.gz" -C "target/universal-apple-darwin/release/bundle/macos" "Pure Build Launcher.app"
+          APP_DIR=$(find target/universal-apple-darwin/release/bundle -type d -name "*.app" | head -n 1)
+          if [ -n "$APP_DIR" ]; then
+            echo "Found macOS App: $APP_DIR"
+            APP_NAME=$(basename "$APP_DIR")
+            PARENT_DIR=$(dirname "$APP_DIR")
+            tar -czvf "target/universal-apple-darwin/release/bundle/portable/Pure-Build-Launcher-macOS-Universal-Portable.tar.gz" -C "$PARENT_DIR" "$APP_NAME"
           fi
 
       - name: Upload macOS Artifacts
@@ -169,11 +179,17 @@ jobs:
       - name: Package Linux Portable Tarball
         run: |
           mkdir -p target/release/bundle/portable
+          MAIN_BIN=""
           if [ -f "target/release/pure-build-launcher" ]; then
-            cp "target/release/pure-build-launcher" "target/release/bundle/portable/pure-build-launcher"
-            tar -czvf "target/release/bundle/portable/Pure-Build-Launcher-Linux-x64-Portable.tar.gz" -C "target/release/bundle/portable" "pure-build-launcher"
+            MAIN_BIN="target/release/pure-build-launcher"
           elif [ -f "target/release/app" ]; then
-            cp "target/release/app" "target/release/bundle/portable/pure-build-launcher"
+            MAIN_BIN="target/release/app"
+          else
+            MAIN_BIN=$(find target/release -maxdepth 1 -type f -executable ! -name "*.so" ! -name "*.d" | head -n 1)
+          fi
+          if [ -n "$MAIN_BIN" ]; then
+            echo "Found main binary: $MAIN_BIN"
+            cp "$MAIN_BIN" "target/release/bundle/portable/pure-build-launcher"
             tar -czvf "target/release/bundle/portable/Pure-Build-Launcher-Linux-x64-Portable.tar.gz" -C "target/release/bundle/portable" "pure-build-launcher"
           fi
 
