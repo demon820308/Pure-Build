@@ -1,0 +1,7 @@
+# 针对 Windows 便携版分发，静态内嵌 MSVC C 运行时 (VCRUNTIME140.dll / MSVCP140.dll)，
+# 防止在未安装 VC++ Redistributable 的纯净 Windows 电脑上因缺少 DLL 无法启动。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

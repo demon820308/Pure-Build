@@ -172,11 +172,6 @@ const classicNavItems: Array<{
   { id: 'setup', name: '设置', icon: 'setup' },
   { id: 'other', name: '更多', icon: 'more' },
 ]
-
-const handleTitleBarMouseDown = (e: MouseEvent) => {
-  if ((e.target as HTMLElement).closest('button')) return
-  backend.startDragging()
-}
 </script>
 
 <template>
@@ -204,7 +199,7 @@ const handleTitleBarMouseDown = (e: MouseEvent) => {
       v-if="store.uiStyle === 'classic'"
       data-tauri-drag-region
       class="relative z-10 h-[52px] flex items-center justify-between px-5 bg-white dark:bg-[#1e232b] border-b border-black/8 dark:border-white/10 cursor-default shrink-0"
-      @mousedown="handleTitleBarMouseDown"
+      @dblclick.prevent.stop
     >
       <!-- 左侧：原版 ShapeTitleLogo 矢量线条 + PCL 字样；若在二级版本设置页则显示 PanTitleInner 返回栏 -->
       <div data-tauri-drag-region class="flex items-center gap-2.5">
@@ -303,7 +298,7 @@ const handleTitleBarMouseDown = (e: MouseEvent) => {
       v-else
       data-tauri-drag-region
       class="relative z-10 h-10 flex items-center justify-between px-4 bg-pcl-card border-b border-pcl-border cursor-default shrink-0"
-      @mousedown="handleTitleBarMouseDown"
+      @dblclick.prevent.stop
     >
       <div data-tauri-drag-region class="flex items-center gap-2 text-xs font-semibold text-pcl-text pointer-events-none">
         <img

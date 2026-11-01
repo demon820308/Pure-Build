@@ -120,6 +120,11 @@ async fn fetch_optifine_games() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+async fn fetch_optifine_loaders(game_version: String) -> Result<Vec<LoaderVersionItem>, String> {
+    DownloadManager::fetch_optifine_loaders(&game_version).await
+}
+
+#[tauri::command]
 async fn start_install_version(
     app: AppHandle,
     game_dir: String,
@@ -349,6 +354,7 @@ pub fn run() {
             fetch_forge_loaders,
             fetch_neoforge_loaders,
             fetch_optifine_games,
+            fetch_optifine_loaders,
             start_install_version,
             download_minecraft_server,
             import_modpack,
@@ -380,17 +386,16 @@ pub fn run() {
 
             // 遵循规范 §3.6：macOS 窗口恢复原生红绿灯装饰（platform 层之外唯一登记的窗口创建 cfg）
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_maximizable(false);
                 #[cfg(target_os = "macos")]
                 {
                     let _ = window.set_decorations(true);
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = window;
                 }
             }
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .unwrap_or_else(|e| {
+            platform::report_startup_error(&e.to_string());
+        });
 }

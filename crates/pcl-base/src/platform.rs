@@ -549,6 +549,34 @@ pub fn get_platform_info() -> PlatformInfo {
     }
 }
 
+/// 当便携版在缺失 WebView2 等运行环境的电脑上启动失败时，写入错误日志并弹出系统级提示框，避免静默闪退
+pub fn report_startup_error(err_msg: &str) {
+    let full_msg = format!(
+        "Pure Build Launcher 启动失败：{}\n\n若在另一台电脑运行便携版打不开，请确认系统已安装 Microsoft Edge WebView2 Runtime，或直接使用安装包 (Setup.exe) 安装运行。",
+        err_msg
+    );
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(dir) = exe_path.parent() {
+            let _ = fs::write(dir.join("startup_error.log"), &full_msg);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let escaped = full_msg.replace('\'', "''").replace('\n', "`n");
+        let ps_cmd = format!(
+            "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Pure Build Launcher 启动错误', 'OK', 'Error') | Out-Null",
+            escaped
+        );
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_cmd])
+            .status();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        eprintln!("{}", full_msg);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

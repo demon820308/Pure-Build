@@ -72,6 +72,14 @@ struct NeoForgeRawItem {
 #[derive(Debug, Deserialize)]
 struct OptiFineRawItem {
     mcversion: String,
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    patch: String,
+    #[serde(default)]
+    filename: String,
+    #[serde(default)]
+    forge: Option<String>,
 }
 
 pub struct DownloadManager;
@@ -218,6 +226,47 @@ impl DownloadManager {
                     set.insert(item.mcversion);
                 }
                 return Ok(set.into_iter().collect());
+            }
+        }
+        Ok(Vec::new())
+    }
+
+    /// 获取指定原版版本的 OptiFine 加载器版本列表
+    pub async fn fetch_optifine_loaders(
+        game_version: &str,
+    ) -> Result<Vec<LoaderVersionItem>, String> {
+        let url = endpoints::optifine_list_url(game_version);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| e.to_string())?;
+
+        if let Ok(res) = client.get(&url).send().await {
+            if let Ok(items) = res.json::<Vec<OptiFineRawItem>>().await {
+                let mut list: Vec<LoaderVersionItem> = items
+                    .into_iter()
+                    .filter(|i| !i.r#type.is_empty() && !i.patch.is_empty())
+                    .map(|i| {
+                        let stable = !i.patch.to_lowercase().starts_with("pre")
+                            && !i.filename.to_lowercase().starts_with("preview");
+                        let base_desc = if stable { "正式版" } else { "预览版" };
+                        let desc = match i.forge.as_deref() {
+                            Some(f) if !f.is_empty() && f != "Forge N/A" => {
+                                format!("{} · 兼容 {}", base_desc, f)
+                            }
+                            _ => base_desc.to_string(),
+                        };
+                        LoaderVersionItem {
+                            version: format!("{}_{}", i.r#type, i.patch),
+                            stable,
+                            description: Some(desc),
+                        }
+                    })
+                    .collect();
+                // 正式版优先，同类中新版在前
+                list.reverse();
+                list.sort_by_key(|item| !item.stable);
+                return Ok(list);
             }
         }
         Ok(Vec::new())

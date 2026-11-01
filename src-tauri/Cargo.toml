@@ -1,8 +1,9 @@
 [package]
-name = "app"
-version = "0.1.0"
-description = "Plain Craft Launcher 2 - Tauri 2.0 Edition"
-authors = ["you"]
+name = "pure-build-launcher"
+version = "0.1.1"
+description = "Pure Build Launcher - Tauri 2.0 Edition"
+authors = ["Pure Build Team"]
+license = "GPL-3.0-or-later"
 edition = "2024"
 rust-version = "1.90"
 

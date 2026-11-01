@@ -214,6 +214,11 @@ export const backend = {
     return await invoke<string[]>('fetch_optifine_games')
   },
 
+  // 获取指定原版版本的 OptiFine 可选加载器列表
+  async fetchOptifineLoaders(gameVersion: string): Promise<LoaderVersionItem[]> {
+    return await invoke<LoaderVersionItem[]>('fetch_optifine_loaders', { gameVersion })
+  },
+
   // 搜索 Modrinth 社区资源 (Mods, Shaders, Resourcepacks)
   async searchModrinthResources(params: {
     query: string

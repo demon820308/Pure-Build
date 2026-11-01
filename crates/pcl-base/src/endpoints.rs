@@ -75,7 +75,7 @@ pub const DEFAULT_LIBRARY_CONCURRENCY: usize = 32;
 pub const DEFAULT_ASSET_CONCURRENCY: usize = 64;
 
 /// 应用配置文件夹标识
-pub const APP_IDENTIFIER: &str = "com.pcl.tcl";
+pub const APP_IDENTIFIER: &str = "com.purebuild.launcher";
 
 /// 配置文件名
 pub const CONFIG_FILE_NAME: &str = "pcl_config.json";
@@ -303,4 +303,14 @@ pub fn neoforge_list_url(game_version: &str) -> String {
 /// OptiFine 支持版本列表地址
 pub fn optifine_version_list_url() -> String {
     format!("{}/optifine/versionList", BMCLAPI_ROOT)
+}
+
+/// 指定原版版本的 OptiFine 可用版本清单地址
+pub fn optifine_list_url(game_version: &str) -> String {
+    format!("{}/optifine/{}", BMCLAPI_ROOT, game_version)
+}
+
+/// OptiFine 安装包 JAR 下载地址
+pub fn optifine_installer_url(mc_version: &str, of_type: &str, of_patch: &str) -> String {
+    format!("{}/optifine/{}/{}/{}", BMCLAPI_ROOT, mc_version, of_type, of_patch)
 }
