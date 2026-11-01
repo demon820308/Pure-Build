@@ -549,10 +549,10 @@ pub fn get_platform_info() -> PlatformInfo {
     }
 }
 
-/// 当便携版在缺失 WebView2 等运行环境的电脑上启动失败时，写入错误日志并弹出系统级提示框，避免静默闪退
+/// 当在缺失 WebView2 等运行环境的电脑上启动失败时，写入错误日志并弹出系统级提示框，避免静默闪退
 pub fn report_startup_error(err_msg: &str) {
     let full_msg = format!(
-        "Pure Build Launcher 启动失败：{}\n\n若在另一台电脑运行便携版打不开，请确认系统已安装 Microsoft Edge WebView2 Runtime，或直接使用安装包 (Setup.exe) 安装运行。",
+        "Pure Build Launcher 启动失败：{}\n\n若在另一台电脑打不开，请确认系统已安装 Microsoft Edge WebView2 Runtime，或直接使用安装包 (Setup.exe) 安装运行。",
         err_msg
     );
     if let Ok(exe_path) = env::current_exe() {

@@ -48,7 +48,7 @@ npm run tauri build -- --target universal-apple-darwin
 ```
 
 - **关于代码签名与公证（Gatekeeper）**：未配置 Apple Developer ID 代码签名与公证（Notarization）的构建产物在他人 Mac 上首次打开时会被 macOS Gatekeeper 拦截，需通过 `xattr -cr "/Applications/Pure Build Launcher.app"` 移除隔离属性或完成正式公证后分发。
-- **关于 Windows 便携版运行环境**：项目已通过 `.cargo/config.toml` 开启 MSVC C 运行时静态链接（`+crt-static`），无需额外安装 VC++ 运行库；若在精简版 Windows 10 上运行单文件便携版提示缺少 WebView2，请安装 Microsoft Edge WebView2 Runtime 或使用附带引导器的 Setup 安装包。
+- **关于 Windows 运行环境**：项目已配置 WebView2 自动引导安装；若在极度精简版 Windows 10/11 上运行提示缺少 WebView2，请通过安装包 (Setup.exe) 安装运行，安装器会自动检测并补齐组件。
 
 ## 开源协议 (License)
 
