@@ -1,7 +1,7 @@
 //! 集中管理所有下载源、镜像地址、API 端点及产品级命名常量。
-//! 遵循项目反写死规范（§0 & §2）：业务模块只引用本模块的命名常量或辅助函数，禁止散落 URL 或魔法数字。
+//! 业务模块只引用本模块的命名常量或辅助函数，禁止散落 URL 或魔法数字。
 
-// ==================== 1. 产品级默认配置常量 ====================
+// 1. 产品级默认配置常量
 
 /// 默认最大 JVM 堆内存 (MB) —— 产品级默认常量
 pub const DEFAULT_MAX_MEMORY_MB: u32 = 4096;
@@ -86,9 +86,9 @@ pub const CONFIG_FILE_NAME: &str = "pcl_config.json";
 /// 凭据文件名（存放正版登录 Profile 与 access_token，移出前端 localStorage）
 pub const CREDENTIALS_FILE_NAME: &str = "pcl_credentials.json";
 
-// ==================== 2. 微软正版认证公开端点与常量 ====================
+// 2. 微软正版认证公开端点与常量
 
-/// 微软官方公开给 Minecraft 启动器的 OAuth Client ID（见规范 §2 例外登记）
+/// 微软官方公开给 Minecraft 启动器的 OAuth Client ID
 pub const MS_OAUTH_CLIENT_ID: &str = "00000000402b5328";
 
 pub const MS_DEVICE_CODE_URL: &str = "https://login.live.com/oauth20_connect.srf";
@@ -100,10 +100,10 @@ pub const MC_LOGIN_XBOX_URL: &str = "https://api.minecraftservices.com/authentic
 pub const MC_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
 pub const CRAFATAR_AVATAR_BASE: &str = "https://crafatar.com/avatars";
 
-/// 默认 Yggdrasil 外置登录验证服务器地址（LittleSkin 公开 API 根地址，见 §2 例外登记）
+/// 默认 Yggdrasil 外置登录验证服务器地址（LittleSkin 公开 API 根地址）
 pub const DEFAULT_YGGDRASIL_API_ROOT: &str = "https://littleskin.cn/api/yggdrasil";
 
-// ==================== 3. 官方源与镜像源端点 ====================
+// 3. 官方源与镜像源端点
 
 /// Mojang 官方源基础地址
 pub const MOJANG_PISTON_META: &str = "https://piston-meta.mojang.com";
@@ -139,7 +139,7 @@ pub const MCIMIRROR_CDN_ROOT: &str = "https://mod.mcimirror.top";
 pub const LAUNCHER_USER_AGENT: &str = "PCL2/2.11.2.50 (PlainCraftLauncher/2.0)";
 pub const LAUNCHER_REFERER: &str = "http://408.open.pcl2.server/";
 
-// ==================== 4. 多源 URL 组装与故障转移辅助函数 ====================
+// 4. 多源 URL 组装与故障转移辅助函数
 
 /// 返回版本清单候选 URL 列表（根据是否启用镜像源决定优先级，官方源与镜像源互为备份）
 pub fn version_manifest_urls(prefer_mirror: bool) -> [&'static str; 2] {

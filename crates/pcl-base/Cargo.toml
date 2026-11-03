@@ -1,6 +1,6 @@
 [package]
 name = "pcl-base"
-version = "0.1.3"
+version = "0.1.4"
 license = "GPL-3.0-or-later"
 edition = "2024"
 
@@ -12,4 +12,5 @@ regex = "1.11"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 tokio = { version = "1.40", features = ["full"] }
-tauri = { version = "2.12.5" }
+sha1 = "0.10"
+sha2 = "0.10"

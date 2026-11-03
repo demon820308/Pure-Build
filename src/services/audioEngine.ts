@@ -83,7 +83,6 @@ export class AudioEngine {
   private masterGainNode: GainNode | null = null
   private analyserNode: AnalyserNode | null = null
 
-  // 状态变量
   private currentVolume = 45 // 0 ~ 100
   private currentPresetId = 'flat'
   private customGains: number[] = [0, 0, 0, 0, 0]
@@ -91,7 +90,6 @@ export class AudioEngine {
   private crossfadeEnabled = true
   private isFading = false
 
-  // 事件回调
   public onTimeUpdate?: (currentTime: number, duration: number, progress: number) => void
   public onLoadedMetadata?: (duration: number) => void
   public onEnded?: () => void
@@ -261,11 +259,6 @@ export class AudioEngine {
     }
   }
 
-  // ==================== 公共业务控制接口 ====================
-
-  /**
-   * 加载音频源并播放
-   */
   public async loadSource(blobUrl: string, autoPlay: boolean): Promise<void> {
     this.ensureAudioGraph()
     await this.resumeContextIfNeeded()

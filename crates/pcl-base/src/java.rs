@@ -20,7 +20,7 @@ pub struct JavaInfo {
 pub struct JavaScanner;
 
 impl JavaScanner {
-    /// 跨平台扫描系统中的所有可用 Java（遵循规范 §3.3：目录清单由 platform.rs 提供）
+    /// 跨平台扫描系统中的所有可用 Java（候选搜索目录统一由 platform.rs 集中提供）
     pub fn scan_all() -> Vec<JavaInfo> {
         let mut found_paths = HashSet::new();
         let exec_name = platform::java_executable_name();

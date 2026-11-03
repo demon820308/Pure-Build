@@ -1,6 +1,7 @@
 use crate::config::ConfigManager;
 use crate::crash::CrashAnalyzer;
 use crate::platform;
+use crate::reporter::ReporterHandle;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,7 +9,6 @@ use std::fs::{self, File};
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use tauri::{AppHandle, Emitter};
 use zip::ZipArchive;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,7 +104,7 @@ pub struct MinecraftLauncher;
 impl MinecraftLauncher {
     /// 执行拉起游戏进程 (带正版/离线身份，解压当前平台 natives，并异步监控崩溃日志)
     pub fn launch_with_auth(
-        app: AppHandle,
+        reporter: ReporterHandle,
         game_dir_str: &str,
         version_id: &str,
         java_path_str: &str,
@@ -115,16 +115,13 @@ impl MinecraftLauncher {
     ) -> Result<String, String> {
         let emit_progress =
             |step: &str, pct: f32, pid: Option<u32>, finished: bool, err: Option<String>| {
-                let _ = app.emit(
-                    "launch_progress",
-                    LaunchProgress {
-                        step: step.to_string(),
-                        percentage: pct,
-                        pid,
-                        is_finished: finished,
-                        error: err,
-                    },
-                );
+                reporter.emit_launch(LaunchProgress {
+                    step: step.to_string(),
+                    percentage: pct,
+                    pid,
+                    is_finished: finished,
+                    error: err,
+                });
             };
 
         emit_progress("正在检查游戏环境与版本元数据...", 15.0, None, false, None);
@@ -152,7 +149,7 @@ impl MinecraftLauncher {
             cfg.window_width > 0 && cfg.window_height > 0,
         );
 
-        // 1. 搜集 Classpath 并解压當前平台的 Natives 罐（遵循规范 §3.1）
+        // 1. 搜集 Classpath 并解压当前平台的 Natives 罐
         emit_progress(
             "正在按平台规则解析运行库与解压 Natives...",
             40.0,
@@ -250,7 +247,8 @@ impl MinecraftLauncher {
         let sep = platform::classpath_separator().to_string();
         let classpath = cp_entries.join(&sep);
 
-        // 2. 准备变量映射表（遵循规范 §3.1.4：按当前平台实值替换）
+        // 2. 准备变量映射表（按当前平台实值替换占位符）
+        let effective_game_dir = crate::version::resolve_game_dir(game_dir, &version_dir);
         let assets_dir = game_dir.join("assets");
         let assets_index_name = ver_json
             .asset_index
@@ -266,7 +264,7 @@ impl MinecraftLauncher {
         let mut vars = HashMap::new();
         vars.insert("auth_player_name", player_name.to_string());
         vars.insert("version_name", version_id.to_string());
-        vars.insert("game_directory", version_dir.to_string_lossy().to_string());
+        vars.insert("game_directory", effective_game_dir.to_string_lossy().to_string());
         vars.insert("assets_root", assets_dir.to_string_lossy().to_string());
         vars.insert("game_assets", assets_dir.to_string_lossy().to_string());
         vars.insert("assets_index_name", assets_index_name);
@@ -354,7 +352,7 @@ impl MinecraftLauncher {
         emit_progress("正在合成启动参数并唤醒 Java 进程...", 85.0, None, false, None);
 
         let mut cmd = Command::new(java_path_str);
-        cmd.current_dir(&version_dir);
+        cmd.current_dir(&effective_game_dir);
         cmd.args(&jvm_args);
         cmd.arg(&ver_json.main_class);
         cmd.args(&game_args);
@@ -366,7 +364,7 @@ impl MinecraftLauncher {
                 let pid = child.id();
                 let g_dir = game_dir.to_path_buf();
                 let v_dir = version_dir.clone();
-                let app_handle = app.clone();
+                let reporter_handle = reporter.clone();
 
                 emit_progress(
                     &format!("游戏已成功启动 (PID: {})，正在等待游戏窗口...", pid),
@@ -420,14 +418,14 @@ impl MinecraftLauncher {
                                     buf.join("\n")
                                 };
                                 let analysis = CrashAnalyzer::analyze(code, &g_dir, &v_dir, &tail);
-                                let _ = app_handle.emit("game_crash", analysis);
+                                reporter_handle.emit_crash(analysis);
                             } else {
-                                let _ = app_handle.emit("game_exit_normal", code.unwrap_or(0));
+                                reporter_handle.emit_exit(code.unwrap_or(0));
                             }
                         }
                         Err(e) => {
                             eprintln!("监控游戏进程退出失败: {}", e);
-                            let _ = app_handle.emit("game_exit_normal", -1);
+                            reporter_handle.emit_exit(-1);
                         }
                     }
                 });
@@ -510,7 +508,7 @@ impl MinecraftLauncher {
         parent
     }
 
-    /// 按 Mojang 官方 rules 语义判定库或参数是否适用于目标平台（§3.1.1 & §3.1.2）
+    /// 按 Mojang 官方 rules 语义判定库或参数是否适用于目标平台
     /// 无 rules -> 允许；有 rules -> 从上到下逐条匹配，最后一条匹配的规则决定 allow/disallow。
     pub fn check_rules_for_target(
         rules: &Option<Vec<LaunchRule>>,
@@ -581,8 +579,7 @@ impl MinecraftLauncher {
         allow
     }
 
-    /// 按版本 JSON 的 `natives` 映射表查表获取当前平台的 classifier 及对应的 `LaunchArtifact`（§3.1.3）
-    /// 禁止自己凭空拼接 classifier 字符串，严格从 `lib.natives` 查表后再到 `downloads.classifiers` 取用。
+    /// classifier 必须从版本 JSON 的 natives 映射表查表取用，禁止自行拼接 — 拼错会导致 natives 选错平台。
     pub fn select_native_classifier<'a>(
         lib: &'a LaunchLibrary,
         target_os: &str,
@@ -619,7 +616,7 @@ impl MinecraftLauncher {
         parts.len() >= 4 && parts[3].starts_with("natives-")
     }
 
-    /// 解析 JVM 或 Game 参数数组（支持纯字符串及带 rules 的条件参数对象，§3.1.4）
+    /// 解析 JVM 或 Game 参数数组（支持纯字符串及带 rules 的条件参数对象）
     pub fn resolve_arguments(
         raw_args: &[serde_json::Value],
         target_os: &str,
@@ -661,7 +658,7 @@ impl MinecraftLauncher {
         out
     }
 
-    /// 安全解压 Native JAR 到目标目录（遵循 §3.1.3 & §4：剔除 META-INF 与签名文件，使用 Path 组件防止 zip-slip）
+    /// 安全解压 Native JAR 到目标目录（剔除 META-INF 与签名文件，使用 Path 组件防止 zip-slip）
     pub fn extract_native_jar(
         jar_path: &Path,
         natives_dir: &Path,
@@ -700,7 +697,7 @@ impl MinecraftLauncher {
                 }
             }
 
-            // 以 Path::components 方式逐级安全 join 落盘（§4 zip-slip 防护）
+            // 以 Path::components 方式逐级安全 join 落盘（防 zip-slip）
             let mut dest_path = natives_dir.to_path_buf();
             for comp in enclosed.components() {
                 if let Component::Normal(part) = comp {
@@ -720,7 +717,7 @@ impl MinecraftLauncher {
         Ok(())
     }
 
-    /// 生成去重用的 package key（不依赖平台分隔符，§4）
+    /// 生成去重用的 package key（不依赖平台分隔符）
     pub fn get_package_key(name: &str) -> String {
         let parts: Vec<&str> = name.split(':').collect();
         if parts.len() >= 4 {
@@ -732,7 +729,7 @@ impl MinecraftLauncher {
         }
     }
 
-    /// 将 artifact.path（正斜杠相对路径）按 PathBuf::join 拆解组合（禁止字符串替换拼分隔符，§2）
+    /// 将 artifact.path（正斜杠相对路径）按 PathBuf::join 拆解组合（禁止字符串替换拼分隔符）
     pub fn artifact_path_to_pathbuf(path_str: &str) -> PathBuf {
         let mut pb = PathBuf::new();
         for seg in path_str.split('/').filter(|s| !s.is_empty() && *s != "..") {
@@ -741,7 +738,7 @@ impl MinecraftLauncher {
         pb
     }
 
-    /// 将 Maven 坐标转换为本地相对路径（全部通过 PathBuf::join 拼接，§2）
+    /// 将 Maven 坐标转换为本地相对路径（全部通过 PathBuf::join 拼接）
     pub fn maven_to_path(name: &str) -> PathBuf {
         let parts: Vec<&str> = name.split(':').collect();
         if parts.len() < 3 {
@@ -777,7 +774,7 @@ impl MinecraftLauncher {
         res
     }
 
-    /// 强制终止指定的 Minecraft 游戏进程（委托给唯一平台层 platform.rs，§1）
+    /// 强制终止指定的 Minecraft 游戏进程（委托给平台层 platform.rs）
     pub fn kill_process(pid: u32) -> Result<(), String> {
         platform::kill_process(pid)
     }

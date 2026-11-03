@@ -223,6 +223,12 @@ const handleLaunch = async () => {
     alert('请先选择一个 Minecraft 版本！')
     return
   }
+  const versionExists = await store.validateTargetExists(
+    store.currentVersion.path,
+    `Minecraft 版本【${store.currentVersion.name || store.currentVersion.id}】`
+  )
+  if (!versionExists) return
+
   if (!selectedJava.value) {
     alert('未检测到可用的 Java 运行时！')
     return
@@ -258,7 +264,6 @@ const handleLaunch = async () => {
 
 <template>
   <div class="h-full flex relative" :class="store.uiStyle === 'classic' ? 'gap-0' : 'gap-5'">
-    <!-- ==================== 1A. 原版 PCL2 经典启动页布局 (PageLaunchLeft.xaml 300px + 右侧主页) ==================== -->
     <template v-if="store.uiStyle === 'classic'">
       <!-- 左侧固定 300px 白底控制面板 (PageLaunchLeft.xaml) -->
       <div
@@ -349,7 +354,6 @@ const handleLaunch = async () => {
 
           <!-- 底部：54px 双行「启动游戏」主按钮 + 版本选择框 + 35x35 齿轮按钮 -->
           <div class="space-y-2.5">
-            <!-- BtnLaunch (Height="54") -->
             <button
               :disabled="!store.currentVersion"
               class="w-full h-[54px] rounded-[4px] border border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-8)] hover:bg-[var(--pcl-brush-6)] active:scale-[0.99] transition-all flex flex-col items-center justify-center cursor-pointer disabled:opacity-50"
@@ -363,7 +367,6 @@ const handleLaunch = async () => {
               </span>
             </button>
 
-            <!-- ComboVersion + PanMoreGear (Height="35") -->
             <div class="flex items-center gap-2">
               <button
                 class="flex-1 h-[35px] px-3 rounded-[4px] border border-black/25 hover:border-[var(--pcl-brush-3)] bg-white text-[12.5px] text-[var(--pcl-brush-1)] flex items-center justify-between cursor-pointer transition-colors"
@@ -383,7 +386,6 @@ const handleLaunch = async () => {
               </button>
             </div>
 
-            <!-- 向上弹出的紧凑版本选择列表 -->
             <div
               v-if="showVersionPicker"
               class="max-h-44 overflow-y-auto rounded-[4px] border border-[var(--pcl-brush-5)] bg-white dark:bg-[#222730] shadow-md p-1 space-y-0.5"
@@ -402,12 +404,10 @@ const handleLaunch = async () => {
           </div>
         </template>
 
-        <!-- 状态 B：正在启动或运行中 (复刻 PageLaunchLeft.xaml PanLaunching 斜体进度面板) -->
         <template v-else>
           <div class="my-auto flex flex-col items-center text-center px-2">
             <div class="w-11 h-11 rounded-full border-3 border-[var(--pcl-brush-6)] border-t-[var(--pcl-brush-3)] animate-spin mb-3" />
 
-            <!-- SkewX(-3deg) 标题与版本名 -->
             <div
               class="text-[20px] font-bold text-[var(--pcl-brush-3)]"
               style="transform: skewX(-3deg)"
@@ -421,7 +421,6 @@ const handleLaunch = async () => {
               {{ store.currentVersion?.name }}
             </div>
 
-            <!-- 4px 渐变进度条 (LinearGradientBrush ColorObject4 -> ColorObject3) -->
             <div class="w-full h-[4px] bg-[var(--pcl-brush-6)] my-4 overflow-hidden rounded-xs">
               <div
                 class="h-full transition-all duration-300"
@@ -430,7 +429,6 @@ const handleLaunch = async () => {
               />
             </div>
 
-            <!-- PanLaunchingInfo 双列信息对齐表 -->
             <div class="w-full text-[12.5px] space-y-1.5 text-left px-3">
               <div class="grid grid-cols-[72px_1fr] gap-3">
                 <span class="text-right text-[var(--pcl-brush-1)] opacity-50">当前步骤</span>
@@ -465,7 +463,6 @@ const handleLaunch = async () => {
         </template>
       </div>
 
-      <!-- 右侧：透明微蓝画布自定义主页区 (PanMainRight) -->
       <div class="flex-1 h-full overflow-y-auto p-5 space-y-3.5">
         <MyHint
           v-if="launchMessage"
@@ -475,7 +472,6 @@ const handleLaunch = async () => {
           {{ launchMessage.text }}
         </MyHint>
 
-        <!-- 自定义主页看板 -->
         <MyCard
           :title="store.customHomepageNotice ? '📌 自定义主页公告' : '👋 欢迎使用 Pure Build Launcher (PBL)'"
           subtitle="可在「设置 → 个性化」中自定义此处的主页看板文案与背景壁纸"
@@ -488,7 +484,6 @@ const handleLaunch = async () => {
           </div>
         </MyCard>
 
-        <!-- Java 运行时快速切换卡片 -->
         <MyCard title="Java 运行环境选择" subtitle="点击切换用于启动当前版本的 Java 虚拟机">
           <template #extra>
             <MyButton type="text" size="small" :loading="isScanning" @click="loadData">
@@ -520,7 +515,6 @@ const handleLaunch = async () => {
           </div>
         </MyCard>
 
-        <!-- 快捷主题色切换卡片 -->
         <MyCard title="PBL 经典主题色盘" subtitle="点击标题栏展开 · 实时变换全局 8 阶动态色板" :default-collapsed="true">
           <div class="flex items-center gap-2.5 flex-wrap">
             <button
@@ -535,12 +529,9 @@ const handleLaunch = async () => {
       </div>
     </template>
 
-    <!-- ==================== 1B. 现代 PBL 启动页布局 (上滚动工作区 + 下常驻启动坞 Launch Dock) ==================== -->
     <template v-else>
       <div class="flex-1 h-full flex flex-col gap-4 overflow-hidden">
-        <!-- 上半部分：左右双栏工作区 (独立纵向滚动，绝不挤压底部启动按钮) -->
         <div class="flex-1 grid grid-cols-12 gap-4 overflow-hidden">
-          <!-- 左栏 (7列)：欢迎看板 + 当前游戏实例 + 默认折叠的 Java 运行时环境 -->
           <div class="col-span-7 flex flex-col gap-3 overflow-y-auto pr-1">
             <MyHint
               v-if="launchMessage"
@@ -550,7 +541,6 @@ const handleLaunch = async () => {
               {{ launchMessage.text }}
             </MyHint>
 
-            <!-- 卡片 A：欢迎看板与游戏目录状态条 (适度微缩) -->
             <div class="rounded-2xl bg-pcl-card border border-pcl-border px-4 py-3 flex items-center justify-between shadow-pcl-card shrink-0">
               <div class="space-y-1 min-w-0 pr-3">
                 <div class="flex items-center gap-2">
@@ -584,7 +574,6 @@ const handleLaunch = async () => {
               </MyButton>
             </div>
 
-            <!-- 卡片 B：当前游戏实例 (合并原右侧重复的「版本历史记录」，支持直接展开切换或进入版本设置) -->
             <MyCard
               title="当前游戏实例"
               :subtitle="`已扫描到 ${store.installedVersions.length} 个本地客户端 · 点击可切换或管理 Mod/存档`"
@@ -639,7 +628,6 @@ const handleLaunch = async () => {
                 在该目录下未检测到有效游戏版本，请前往「下载」页安装。
               </div>
 
-              <!-- 展开的版本选择列表（整合了全部已安装版本） -->
               <div
                 v-if="showVersionPicker"
                 class="mt-3 space-y-1.5 border-t border-pcl-border pt-2.5 max-h-44 overflow-y-auto"
@@ -666,7 +654,6 @@ const handleLaunch = async () => {
               </div>
             </MyCard>
 
-            <!-- 卡片 C：Java 运行时环境 (默认折叠！标题栏右侧直接显示当前选中的 Java 徽章，点击展开) -->
             <MyCard
               title="Java 运行时环境"
               subtitle="点击展开切换用于启动该版本的 Java 虚拟机"
@@ -712,15 +699,12 @@ const handleLaunch = async () => {
             </MyCard>
           </div>
 
-          <!-- 右栏 (5列)：玩家身份 (高对比度离线昵称输入框) + 主题色快速调色盘 (默认折叠) -->
           <div class="col-span-5 flex flex-col gap-3.5 overflow-y-auto pr-0.5">
-            <!-- 卡片 D：玩家身份 -->
             <MyCard
               title="玩家身份"
               :subtitle="store.hideYggdrasilLogin ? '支持离线登录与微软正版授权' : '支持离线登录、微软正版与外置登录'"
               :can-collapse="false"
             >
-              <!-- 顶部登录方式分段切换栏 (根据是否隐藏外置登录自动切换 2 列 / 3 列) -->
               <div
                 class="grid gap-1 p-1 rounded-xl bg-black/5 dark:bg-black/30 border border-pcl-border mb-3"
                 :class="store.hideYggdrasilLogin ? 'grid-cols-2' : 'grid-cols-3'"
@@ -761,7 +745,6 @@ const handleLaunch = async () => {
                 </button>
               </div>
 
-              <!-- 当前身份信息与高对比度内凹离线昵称输入框 -->
               <div class="flex items-center gap-3 p-3 rounded-xl bg-black/5 dark:bg-[#181c24] border border-pcl-border">
                 <img
                   v-if="store.userProfile"
@@ -812,7 +795,6 @@ const handleLaunch = async () => {
               </div>
             </MyCard>
 
-            <!-- 卡片 E：主题色快速调色盘 (默认折叠，点击展开) -->
             <MyCard title="主题色快速调色盘" subtitle="点击展开 · 动态计算全局 HSL 梯度" :default-collapsed="true">
               <div class="flex gap-2.5 flex-wrap pt-1">
                 <button
@@ -827,12 +809,10 @@ const handleLaunch = async () => {
           </div>
         </div>
 
-        <!-- 下半部分：底部固定常驻「启动控制台坞 (Launch Dock)」—— 音乐播放器已移至左下角侧栏，启动坞恢复全宽对齐 -->
         <div
           class="h-[50px] rounded-xl bg-pcl-card border px-3.5 flex items-center justify-between gap-3 shrink-0 shadow-pcl-card transition-all"
           :class="runningPid ? 'border-emerald-500/40' : 'border-pcl-border'"
         >
-          <!-- 左侧：当前就绪参数摘要 或 实时启动进度条 -->
           <div v-if="launchProgress && !launchProgress.error" class="flex-1 min-w-0 space-y-1">
             <div class="flex items-center justify-between text-xs">
               <span class="font-bold text-pcl-text flex items-center gap-2 truncate">
@@ -883,7 +863,6 @@ const handleLaunch = async () => {
             </div>
           </div>
 
-          <!-- 右侧：紧凑醒目的「🚀 进入游戏」主按钮 -->
           <button
             :disabled="isLaunching || !store.currentVersion"
             class="h-[34px] px-6 rounded-lg text-white text-[13px] font-bold shadow-md transition-all duration-200 active:scale-95 cursor-pointer flex items-center justify-center gap-2 select-none disabled:opacity-50 shrink-0"
@@ -911,7 +890,6 @@ const handleLaunch = async () => {
       </div>
     </template>
 
-    <!-- 微软设备码登录弹出层 -->
     <div
       v-if="showLoginModal"
       class="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6 z-50 rounded-2xl animate-fade-in"
@@ -926,7 +904,6 @@ const handleLaunch = async () => {
           </button>
         </div>
 
-        <!-- 外置登录表单 -->
         <div v-if="loginMode === 'yggdrasil'" class="space-y-3 text-xs">
           <div class="flex flex-col gap-1">
             <span class="text-pcl-subtext">Yggdrasil 验证服务器地址 (如 LittleSkin)：</span>
@@ -970,7 +947,6 @@ const handleLaunch = async () => {
             请点击下方按钮复制配对码，并在打开的微软官方页面中完成登录授权：
           </p>
 
-          <!-- 大号高亮配对码 -->
           <div class="p-3.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-primary/30 flex items-center justify-between">
             <span class="text-xs text-pcl-subtext">配对码：</span>
             <span class="text-lg font-mono font-bold text-pcl-primary tracking-widest">

@@ -112,7 +112,6 @@ onMounted(() => {
 
 <template>
   <div class="h-full flex overflow-hidden" :class="store.uiStyle === 'classic' ? 'flex-row gap-0' : 'flex-col gap-4'">
-    <!-- 原版 PCL2 经典左侧 152px 菜单栏 (PageOtherLeft.xaml) -->
     <div
       v-if="store.uiStyle === 'classic'"
       class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
@@ -143,7 +142,6 @@ onMounted(() => {
       class="flex-1 h-full flex flex-col gap-4 overflow-y-auto"
       :class="store.uiStyle === 'classic' ? 'p-5' : 'pr-1'"
     >
-    <!-- 顶部标题栏 -->
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
@@ -167,7 +165,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 缓存清理结果提示 -->
     <div
       v-if="cleanResult"
       class="px-4 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-700 dark:text-emerald-300 flex items-center justify-between"
@@ -179,7 +176,6 @@ onMounted(() => {
       <button class="underline cursor-pointer ml-2" @click="cleanResult = null">关闭</button>
     </div>
 
-    <!-- 下载源与社区节点测速面板 -->
     <MyCard
       v-show="store.uiStyle === 'modern' || otherSubTab === 'all' || otherSubTab === 'test'"
       title="官方源与镜像源网络测速"
@@ -215,7 +211,6 @@ onMounted(() => {
       </div>
     </MyCard>
 
-    <!-- 离线疑难杂症百科 -->
     <MyCard
       v-show="store.uiStyle === 'modern' || otherSubTab === 'all' || otherSubTab === 'help'"
       title="Minecraft & PBL 疑难杂症百科"

@@ -1,10 +1,11 @@
 use crate::config::ConfigManager;
 use crate::endpoints;
-use crate::installer::{DownloadProgress, VersionInstaller};
+use crate::installer::DownloadProgress;
+use crate::reporter::ReporterHandle;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModrinthProject {
@@ -54,6 +55,7 @@ struct ModrinthFile {
     filename: String,
     primary: bool,
     size: u64,
+    hashes: Option<HashMap<String, String>>,
 }
 
 pub struct CommunityManager;
@@ -140,7 +142,7 @@ impl CommunityManager {
 
     /// 下载并安装指定的 Modrinth 资源到指定文件夹（支持 MCIM 镜像加速 + 临时文件原子校验）
     pub async fn install_resource(
-        app: AppHandle,
+        reporter: ReporterHandle,
         game_dir_str: String,
         version_path_str: Option<String>,
         project_id: String,
@@ -150,18 +152,15 @@ impl CommunityManager {
     ) -> Result<String, String> {
         let emit_progress =
             |step: &str, pct: f32, speed: &str, finished: bool, err: Option<String>| {
-                let _ = app.emit(
-                    "download_progress",
-                    DownloadProgress {
-                        version_id: project_id.clone(),
-                        vanilla_version: game_version.clone(),
-                        step: step.to_string(),
-                        percentage: pct,
-                        speed_text: speed.to_string(),
-                        is_finished: finished,
-                        error: err,
-                    },
-                );
+                reporter.emit_download(DownloadProgress {
+                    version_id: project_id.clone(),
+                    vanilla_version: game_version.clone(),
+                    step: step.to_string(),
+                    percentage: pct,
+                    speed_text: speed.to_string(),
+                    is_finished: finished,
+                    error: err,
+                });
             };
 
         emit_progress("正在获取该资源的匹配版本...", 10.0, "解析版本", false, None);
@@ -243,12 +242,7 @@ impl CommunityManager {
             .ok_or_else(|| "非法的文件名".to_string())?;
 
         let base_dir = if let Some(vp) = version_path_str {
-            let v_path = Path::new(&vp);
-            if v_path.join("mods").is_dir() && project_type == "mod" {
-                v_path.to_path_buf()
-            } else {
-                Path::new(&game_dir_str).to_path_buf()
-            }
+            crate::version::resolve_game_dir(&game_dir_str, vp)
         } else {
             Path::new(&game_dir_str).to_path_buf()
         };
@@ -276,13 +270,25 @@ impl CommunityManager {
 
         let candidate_urls = endpoints::resolve_modrinth_file_urls(&file_info.url, prefer_mirror);
         let mut last_emit_pct = 0.0f32;
+        let exp_sha1 = file_info
+            .hashes
+            .as_ref()
+            .and_then(|h| h.get("sha1"))
+            .map(|s| s.as_str());
+        let exp_sha512 = file_info
+            .hashes
+            .as_ref()
+            .and_then(|h| h.get("sha512"))
+            .map(|s| s.as_str());
 
-        VersionInstaller::download_file_with_retry(
+        crate::installer::download::download_file_with_retry_and_hashes(
             client,
             &candidate_urls,
             &dest_path,
             Some(file_info.size),
-            |downloaded, total| {
+            exp_sha1,
+            exp_sha512,
+            |downloaded: u64, total: u64| {
                 let total_f = total.max(1) as f32;
                 let dl_f = downloaded as f32;
                 let pct = 20.0 + (dl_f / total_f) * 78.0;

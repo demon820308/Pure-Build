@@ -11,6 +11,7 @@ pub mod link;
 pub mod modpack;
 pub mod mods;
 pub mod platform;
+pub mod reporter;
 pub mod resource;
 pub mod version;
 
@@ -26,5 +27,6 @@ pub use link::{CacheCleanResult, EndpointPingResult, LanRoomInfo, LinkManager};
 pub use modpack::{ModpackIndex, ModpackManager};
 pub use mods::{ModInfo, ModScanner};
 pub use platform::PlatformInfo;
+pub use reporter::{NoopProgressReporter, ProgressReporter, ReporterHandle};
 pub use resource::{MusicTrack, ResourceItem, ResourceScanner, SaveInfo};
-pub use version::{VersionInfo, VersionScanner};
+pub use version::{is_version_isolated, resolve_game_dir, VersionInfo, VersionScanner};

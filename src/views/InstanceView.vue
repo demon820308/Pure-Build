@@ -9,7 +9,6 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 
 const store = useAppStore()
 
-// 当前子标签页：'mods' | 'shaderpacks' | 'resourcepacks' | 'saves'
 const activeTab = ref<'mods' | 'shaderpacks' | 'resourcepacks' | 'saves'>('mods')
 
 const mods = ref<ModInfo[]>([])
@@ -38,7 +37,7 @@ const loadData = async () => {
   }
 }
 
-watch([() => store.currentVersion, activeTab], () => {
+watch([() => store.currentVersion, activeTab, () => store.instanceRefreshTrigger], () => {
   loadData()
 })
 
@@ -46,7 +45,6 @@ onMounted(() => {
   loadData()
 })
 
-// 过滤后的列表
 const filteredMods = computed(() => {
   const q = searchQuery.value.toLowerCase().trim()
   if (!q) return mods.value
@@ -73,6 +71,7 @@ const filteredSaves = computed(() => {
 
 const toggleMod = async (mod: ModInfo) => {
   if (!store.currentVersion) return
+  if (!await store.validateTargetExists(store.currentVersion.path, `版本【${store.currentVersion.name || store.currentVersion.id}】`)) return
   try {
     const newName = await backend.toggleInstanceItem(
       store.currentVersion.path,
@@ -89,6 +88,7 @@ const toggleMod = async (mod: ModInfo) => {
 
 const deleteItem = async (folderName: string, fileName: string) => {
   if (!store.currentVersion) return
+  if (!await store.validateTargetExists(store.currentVersion.path, `版本【${store.currentVersion.name || store.currentVersion.id}】`)) return
   if (!confirm(`确定要从本地删除 [${fileName}] 吗？`)) return
   try {
     await backend.deleteInstanceItem(
@@ -105,6 +105,7 @@ const deleteItem = async (folderName: string, fileName: string) => {
 
 const toggleResource = async (item: ResourceItem) => {
   if (!store.currentVersion) return
+  if (!await store.validateTargetExists(store.currentVersion.path, `版本【${store.currentVersion.name || store.currentVersion.id}】`)) return
   try {
     const newName = await backend.toggleInstanceItem(
       store.currentVersion.path,
@@ -121,6 +122,7 @@ const toggleResource = async (item: ResourceItem) => {
 
 const openCurrentFolder = async () => {
   if (!store.currentVersion) return
+  if (!await store.validateTargetExists(store.currentVersion.path, `版本【${store.currentVersion.name || store.currentVersion.id}】`)) return
   try {
     await backend.openInstanceFolder(store.currentVersion.path, store.gameDir, activeTab.value)
   } catch (err: any) {
@@ -128,7 +130,6 @@ const openCurrentFolder = async () => {
   }
 }
 
-// 导入 .mrpack 整合包
 const handleImportModpack = async () => {
   try {
     const selected = await open({
@@ -157,9 +158,9 @@ const handleImportModpack = async () => {
   }
 }
 
-// 导出当前实例为 .mrpack 整合包
 const handleExportModpack = async () => {
   if (!store.currentVersion) return
+  if (!await store.validateTargetExists(store.currentVersion.path, `版本【${store.currentVersion.name || store.currentVersion.id}】`)) return
   try {
     const outPath = await save({
       title: `导出实例 [${store.currentVersion.name}] 为 .mrpack 整合包`,
@@ -185,7 +186,6 @@ const handleExportModpack = async () => {
 
 <template>
   <div class="h-full flex overflow-hidden" :class="store.uiStyle === 'classic' ? 'flex-row gap-0' : 'flex-col gap-4'">
-    <!-- 原版 PCL2 经典左侧 152px 菜单栏 (PageInstanceLeft.xaml) -->
     <div
       v-if="store.uiStyle === 'classic'"
       class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
@@ -242,7 +242,6 @@ const handleExportModpack = async () => {
       class="flex-1 h-full flex flex-col gap-4 overflow-hidden"
       :class="store.uiStyle === 'classic' && 'p-5'"
     >
-    <!-- 顶部状态指示与操作栏 -->
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
@@ -261,7 +260,6 @@ const handleExportModpack = async () => {
         </div>
       </div>
 
-      <!-- 整合包导入与导出快捷操作 -->
       <div class="flex items-center gap-2">
         <MyButton type="secondary" size="small" :loading="isImporting" @click="handleImportModpack">
           📥 导入整合包 (.mrpack)
@@ -272,7 +270,6 @@ const handleExportModpack = async () => {
       </div>
     </div>
 
-    <!-- 子标签页切换与搜索工具栏 -->
     <div class="flex items-center justify-between gap-3 shrink-0 flex-wrap">
       <div class="flex items-center p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs shrink-0 whitespace-nowrap">
         <button
@@ -322,9 +319,7 @@ const handleExportModpack = async () => {
       </div>
     </div>
 
-    <!-- 列表主视口 -->
     <div class="flex-1 overflow-y-auto pr-1">
-      <!-- Mods 模式列表 -->
       <template v-if="activeTab === 'mods'">
         <div v-if="filteredMods.length === 0 && !isLoading" class="h-64 flex flex-col items-center justify-center text-pcl-subtext text-xs gap-2">
           <span class="text-3xl">🧩</span>
@@ -384,7 +379,6 @@ const handleExportModpack = async () => {
         </div>
       </template>
 
-      <!-- 存档 (Saves) 模式列表 -->
       <template v-else-if="activeTab === 'saves'">
         <div v-if="filteredSaves.length === 0 && !isLoading" class="h-64 flex flex-col items-center justify-center text-pcl-subtext text-xs gap-2">
           <span class="text-3xl">🗺️</span>
@@ -429,7 +423,6 @@ const handleExportModpack = async () => {
         </div>
       </template>
 
-      <!-- 光影包与材质包模式列表 -->
       <template v-else>
         <div v-if="filteredResources.length === 0 && !isLoading" class="h-64 flex flex-col items-center justify-center text-pcl-subtext text-xs gap-2">
           <span class="text-3xl">📂</span>

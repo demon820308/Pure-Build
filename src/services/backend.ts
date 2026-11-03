@@ -189,37 +189,30 @@ export interface CacheCleanResult {
 }
 
 export const backend = {
-  // 获取当前操作系统与平台推导默认信息
   async getPlatformInfo(): Promise<PlatformInfo> {
     return await invoke<PlatformInfo>('get_platform_info')
   },
 
-  // 获取全量 Fabric 元数据（支持版本列表及 Loader 列表）
   async fetchFabricMeta(): Promise<FabricMetaSummary> {
     return await invoke<FabricMetaSummary>('fetch_fabric_meta')
   },
 
-  // 获取 Forge 可选加载器列表
   async fetchForgeLoaders(gameVersion: string): Promise<LoaderVersionItem[]> {
     return await invoke<LoaderVersionItem[]>('fetch_forge_loaders', { gameVersion })
   },
 
-  // 获取 NeoForge 可选加载器列表
   async fetchNeoForgeLoaders(gameVersion: string): Promise<LoaderVersionItem[]> {
     return await invoke<LoaderVersionItem[]>('fetch_neoforge_loaders', { gameVersion })
   },
 
-  // 获取支持 OptiFine 的原版游戏版本列表
   async fetchOptifineGames(): Promise<string[]> {
     return await invoke<string[]>('fetch_optifine_games')
   },
 
-  // 获取指定原版版本的 OptiFine 可选加载器列表
   async fetchOptifineLoaders(gameVersion: string): Promise<LoaderVersionItem[]> {
     return await invoke<LoaderVersionItem[]>('fetch_optifine_loaders', { gameVersion })
   },
 
-  // 搜索 Modrinth 社区资源 (Mods, Shaders, Resourcepacks)
   async searchModrinthResources(params: {
     query: string
     projectType: 'mod' | 'shader' | 'resourcepack' | 'modpack'
@@ -239,7 +232,6 @@ export const backend = {
     }
   },
 
-  // 下载并安装 Modrinth 社区资源
   async installModrinthResource(params: {
     gameDir: string
     versionPath?: string
@@ -258,7 +250,6 @@ export const backend = {
     })
   },
 
-  // 导入本地 .mrpack 整合包
   async importModpack(params: {
     gameDir: string
     mrpackPath: string
@@ -271,7 +262,6 @@ export const backend = {
     })
   },
 
-  // 导出本地版本实例为 .mrpack 整合包
   async exportModpack(params: {
     versionPath: string
     gameDir: string
@@ -290,7 +280,6 @@ export const backend = {
     })
   },
 
-  // 资源包与光影包
   async getResources(versionPath: string, gameDir: string, folderName: string): Promise<ResourceItem[]> {
     try {
       return await invoke<ResourceItem[]>('get_resources', { versionPath, gameDir, folderName })
@@ -300,13 +289,20 @@ export const backend = {
     }
   },
 
-  // 单人世界存档
   async getInstanceSaves(versionPath: string, gameDir: string): Promise<SaveInfo[]> {
     try {
       return await invoke<SaveInfo[]>('get_instance_saves', { versionPath, gameDir })
     } catch (e) {
       console.warn('获取存档列表异常:', e)
       return []
+    }
+  },
+
+  async checkPathExists(targetPath: string): Promise<boolean> {
+    try {
+      return await invoke<boolean>('check_path_exists', { targetPath })
+    } catch {
+      return false
     }
   },
 
@@ -318,12 +314,10 @@ export const backend = {
     await invoke('open_instance_folder', { versionPath, gameDir, folderName })
   },
 
-  // 调用系统默认浏览器打开外部网页链接
   async openUrl(url: string): Promise<void> {
     await invoke('open_url', { url })
   },
 
-  // 递归扫描默认音乐库与自定义音乐文件夹内的所有音频曲目
   async scanMusicFolders(customDirs: string[]): Promise<MusicTrack[]> {
     try {
       return await invoke<MusicTrack[]>('scan_music_folders', { customDirs })
@@ -333,12 +327,10 @@ export const backend = {
     }
   },
 
-  // 读取本地音频文件为 Base64 Data URL
   async readMusicDataUrl(filePath: string): Promise<string> {
     return await invoke<string>('read_music_data_url', { filePath })
   },
 
-  // 微软设备码登录
   async getMicrosoftDeviceCode(): Promise<DeviceCodeResponse> {
     return await invoke<DeviceCodeResponse>('get_microsoft_device_code')
   },
@@ -347,7 +339,6 @@ export const backend = {
     return await invoke<UserProfile>('poll_microsoft_token', { deviceCode })
   },
 
-  // 外置登录 (Yggdrasil / LittleSkin)
   async loginYggdrasilAccount(params: {
     apiRoot: string
     username: string
@@ -360,26 +351,22 @@ export const backend = {
     })
   },
 
-  // 监听启动进度事件
   onLaunchProgress(callback: (p: LaunchProgress) => void) {
     return listen<LaunchProgress>('launch_progress', (event) => {
       callback(event.payload)
     })
   },
 
-  // 监听游戏正常退出
   onGameExitNormal(callback: (exitCode?: number) => void) {
     return listen<number | undefined>('game_exit_normal', (event) => {
       callback(event.payload)
     })
   },
 
-  // 强制终止游戏进程
   async killGameProcess(pid: number): Promise<void> {
     await invoke('kill_game_process', { pid })
   },
 
-  // 局域网联机大厅：扫描当前局域网内的 Minecraft 开放世界广播
   async scanLanRooms(): Promise<LanRoomInfo[]> {
     try {
       return await invoke<LanRoomInfo[]>('scan_lan_rooms')
@@ -389,7 +376,6 @@ export const backend = {
     }
   },
 
-  // 局域网联机大厅：向局域网发送房间广播并生成 PCL2 联机邀请码
   async broadcastLanRoom(params: {
     motd: string
     hostIp: string
@@ -402,36 +388,30 @@ export const backend = {
     })
   },
 
-  // 局域网联机大厅：解码 PCL2 联机邀请码
   async decodeLanInviteCode(code: string): Promise<[string, number]> {
     return await invoke<[string, number]>('decode_lan_invite_code', { code })
   },
 
-  // 百宝箱：检测各大官方源与镜像源响应延迟
   async pingDownloadEndpoints(): Promise<EndpointPingResult[]> {
     return await invoke<EndpointPingResult[]>('ping_download_endpoints')
   },
 
-  // 百宝箱：清理游戏目录下的临时 Natives 解压目录与历史归档日志
   async cleanGameTempCache(gameDir: string): Promise<CacheCleanResult> {
     return await invoke<CacheCleanResult>('clean_game_temp_cache', { gameDir })
   },
 
-  // 监听游戏崩溃诊断报告
   onGameCrash(callback: (report: CrashAnalysisResult) => void) {
     return listen<CrashAnalysisResult>('game_crash', (event) => {
       callback(event.payload)
     })
   },
 
-  // 监听下载进度事件
   onDownloadProgress(callback: (p: DownloadProgress) => void) {
     return listen<DownloadProgress>('download_progress', (event) => {
       callback(event.payload)
     })
   },
 
-  // 下载官方 Minecraft 服务端并自动生成跨平台启动脚本与 EULA 配置（返回生成的脚本文件名）
   async downloadMinecraftServer(params: {
     targetDir: string
     versionId: string
@@ -444,7 +424,6 @@ export const backend = {
     })
   },
 
-  // 触发安装版本 (按原版 PCL 规范支持自定义命名与 Loader 选择)
   async startInstallVersion(params: {
     gameDir: string
     vanillaVersion: string
@@ -463,7 +442,6 @@ export const backend = {
     })
   },
 
-  // 读取与保存配置
   async loadConfig(): Promise<AppConfig> {
     return await invoke<AppConfig>('load_app_config')
   },
@@ -472,7 +450,6 @@ export const backend = {
     await invoke('save_app_config', { config })
   },
 
-  // 读取与保存正版凭据 Profile (存储在后端 app_config_dir，不存 localStorage)
   async loadUserProfile(): Promise<UserProfile | null> {
     return await invoke<UserProfile | null>('load_user_profile')
   },
@@ -481,7 +458,6 @@ export const backend = {
     await invoke('save_user_profile', { profile })
   },
 
-  // 获取系统扫描到的所有 Java
   async getInstalledJava(): Promise<JavaInfo[]> {
     try {
       return await invoke<JavaInfo[]>('get_installed_java')
@@ -491,7 +467,6 @@ export const backend = {
     }
   },
 
-  // 扫描 Minecraft 目录下的真实版本列表
   async getMinecraftVersions(gameDir: string): Promise<VersionInfo[]> {
     try {
       return await invoke<VersionInfo[]>('get_minecraft_versions', { gameDir })
@@ -501,7 +476,6 @@ export const backend = {
     }
   },
 
-  // 扫描指定版本的 Mods 列表
   async getInstalledMods(versionPath: string, gameDir: string): Promise<ModInfo[]> {
     try {
       return await invoke<ModInfo[]>('get_installed_mods', { versionPath, gameDir })
@@ -511,12 +485,10 @@ export const backend = {
     }
   },
 
-  // 切换 Mod 启停状态
   async toggleModState(modsDir: string, fileName: string): Promise<string> {
     return await invoke<string>('toggle_mod_state', { modsDir, fileName })
   },
 
-  // 按版本路径与目录名切换资源启停状态（后端通过 Path::join 处理）
   async toggleInstanceItem(
     versionPath: string,
     gameDir: string,
@@ -531,7 +503,6 @@ export const backend = {
     })
   },
 
-  // 删除指定版本目录中的 Mod 或资源包文件
   async deleteInstanceItem(
     versionPath: string,
     gameDir: string,
@@ -546,12 +517,10 @@ export const backend = {
     })
   },
 
-  // 从下载源拉取全量可下载版本清单
   async fetchRemoteVersions(): Promise<RemoteVersion[]> {
     return await invoke<RemoteVersion[]>('fetch_remote_versions')
   },
 
-  // 启动 Minecraft (支持正版 UUID 与 Token)
   async launchMinecraft(params: {
     gameDir: string
     versionId: string
@@ -572,7 +541,6 @@ export const backend = {
     })
   },
 
-  // 窗口操作
   async showMainWindow() {
     try {
       await invoke('show_main_window')
@@ -580,7 +548,6 @@ export const backend = {
       try {
         await getCurrentWindow().show()
       } catch {
-        // 浏览器环境忽略
       }
     }
   },
@@ -613,7 +580,6 @@ export const backend = {
     try {
       await getCurrentWindow().startDragging()
     } catch (e) {
-      // 浏览器环境不支持或已由 data-tauri-drag-region 接管
     }
   },
 }

@@ -28,18 +28,12 @@ struct FabricModJson {
 pub struct ModScanner;
 
 impl ModScanner {
-    /// 扫描指定版本隔离目录或全局下的 mods 文件夹
+    /// 扫描指定版本依据隔离策略解析出的游戏根目录下的 mods 文件夹
     pub fn scan_mods<P: AsRef<Path>>(version_dir: P, game_dir: P) -> Vec<ModInfo> {
-        let v_mods = version_dir.as_ref().join("mods");
-        let g_mods = game_dir.as_ref().join("mods");
-
-        let target_dir = if v_mods.is_dir() {
-            v_mods
-        } else if g_mods.is_dir() {
-            g_mods
-        } else {
+        let target_dir = crate::version::resolve_game_dir(game_dir, version_dir).join("mods");
+        if !target_dir.is_dir() {
             return Vec::new();
-        };
+        }
 
         let mut mods = Vec::new();
 

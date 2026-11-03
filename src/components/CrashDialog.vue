@@ -47,7 +47,6 @@ const openReportFile = async () => {
     <div
       class="w-full max-w-xl bg-pcl-card border border-red-500/40 rounded-3xl shadow-2xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-hidden"
     >
-      <!-- 模态框头部 -->
       <div class="flex items-center justify-between shrink-0 pb-3 border-b border-pcl-border/60">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-2xl bg-red-500/15 text-red-500 flex items-center justify-center text-xl shrink-0">
@@ -74,9 +73,7 @@ const openReportFile = async () => {
         </button>
       </div>
 
-      <!-- 中间核心诊断分析卡片 -->
       <div class="flex-1 overflow-y-auto pr-1 space-y-3.5">
-        <!-- 诊断结论 -->
         <div class="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex flex-col gap-1.5">
           <div class="text-xs font-bold text-red-500 flex items-center gap-1.5">
             <span>⚠️</span>
@@ -87,7 +84,6 @@ const openReportFile = async () => {
           </div>
         </div>
 
-        <!-- 中文解决建议 -->
         <div class="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex flex-col gap-1.5">
           <div class="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
             <span>💡</span>
@@ -98,7 +94,6 @@ const openReportFile = async () => {
           </div>
         </div>
 
-        <!-- 崩溃日志折叠预览 -->
         <div class="flex flex-col gap-2">
           <div class="flex items-center justify-between">
             <button
@@ -121,7 +116,6 @@ const openReportFile = async () => {
         </div>
       </div>
 
-      <!-- 底部操作按钮 -->
       <div class="flex items-center justify-between gap-3 pt-3 border-t border-pcl-border/60 shrink-0">
         <div class="flex items-center gap-2">
           <button

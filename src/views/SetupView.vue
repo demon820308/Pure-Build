@@ -141,7 +141,6 @@ const handleOpenDefaultMusicDir = async () => {
 
 <template>
   <div class="h-full flex overflow-hidden" :class="store.uiStyle === 'classic' ? 'flex-row gap-0' : 'flex-col gap-4'">
-    <!-- ==================== 1A. 原版 PCL2 经典左侧 152px 菜单栏 (PageSetupLeft.xaml) ==================== -->
     <div
       v-if="store.uiStyle === 'classic'"
       class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
@@ -172,12 +171,10 @@ const handleOpenDefaultMusicDir = async () => {
       />
     </div>
 
-    <!-- 右侧设置卡片主区域 -->
     <div
       class="flex-1 h-full flex flex-col gap-4 overflow-y-auto"
       :class="store.uiStyle === 'classic' ? 'p-5' : 'pr-1'"
     >
-    <!-- 顶部状态栏 -->
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
@@ -202,7 +199,6 @@ const handleOpenDefaultMusicDir = async () => {
     </div>
 
     <div class="space-y-4">
-      <!-- 游戏目录选择 (支持文件夹浏览弹窗) -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'launch'"
         title="Minecraft 游戏目录 (.minecraft)"
@@ -225,7 +221,6 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- 下载源与镜像加速设置 -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'system'"
         title="下载源与镜像加速"
@@ -247,7 +242,6 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- 登录方式与外置登录显示设置 -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'launch' || setupTab === 'ui'"
         title="登录方式显示设置"
@@ -276,7 +270,6 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- 内存分配滑块 (PCL 经典自研滑块布局) -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'launch'"
         title="游戏最大运行内存 (Java Heap)"
@@ -290,7 +283,6 @@ const handleOpenDefaultMusicDir = async () => {
             </span>
           </div>
 
-          <!-- 自定义滑动条 -->
           <div class="space-y-2">
             <input
               type="range"
@@ -311,7 +303,6 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- 窗口分辨率设置 -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'launch'"
         title="游戏默认窗口分辨率"
@@ -339,14 +330,12 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- PBL 个性化主题、壁纸与自定义主页 -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'ui'"
         title="个性化视觉与界面布局风格"
         subtitle="随时切换 1:1 经典布局与现代侧栏布局，定制 8 阶主题色与壁纸"
       >
         <div class="space-y-4 text-xs">
-          <!-- UI 界面风格与布局切换器 -->
           <div class="space-y-2">
             <span class="text-pcl-subtext font-medium block">UI 界面风格与布局架构（点击立即热切换并自动保存）</span>
             <div class="grid grid-cols-2 gap-3">
@@ -404,7 +393,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
           </div>
 
-          <!-- 预设主题色与色相滑块 -->
           <div class="space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-pcl-subtext font-medium">主题色彩方案 (HSL Hue: {{ store.themeHue }}°)</span>
@@ -430,7 +418,6 @@ const handleOpenDefaultMusicDir = async () => {
             />
           </div>
 
-          <!-- 自定义背景图片 -->
           <div class="space-y-1.5">
             <label class="text-pcl-subtext font-medium block">自定义背景壁纸（支持网络图片 URL 或选择本地图片）</label>
             <div class="flex items-center gap-2">
@@ -461,7 +448,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
           </div>
 
-          <!-- 背景毛玻璃模糊度与遮罩不透明度 -->
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1">
               <div class="flex justify-between text-[11px] text-pcl-subtext">
@@ -493,7 +479,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
           </div>
 
-          <!-- 自定义主页公告看板内容 -->
           <div class="space-y-1.5">
             <label class="text-pcl-subtext font-medium block">自定义主页看板内容（显示在启动页右侧，留空则隐藏）</label>
             <textarea
@@ -507,14 +492,12 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- 背景音乐 (BGM) 与多文件夹循环播放设置 (复刻 PageSetupUI.xaml CardMusic 并增强多目录管理) -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'ui'"
         title="背景音乐 (BGM)"
         subtitle="支持添加多个音乐文件夹（自动扫描子文件夹）与多种循环播放模式"
       >
         <div class="space-y-4 text-xs">
-          <!-- 当前播放状态与快捷控制栏 -->
           <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border">
             <div class="min-w-0 flex-1">
               <div class="font-bold text-pcl-text flex items-center gap-2 truncate">
@@ -538,7 +521,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
           </div>
 
-          <!-- 音量滑块与循环模式选择 -->
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-1.5">
               <div class="flex justify-between text-[11px] text-pcl-subtext">
@@ -579,7 +561,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
           </div>
 
-          <!-- 音频调音与均衡器 (Web Audio DSP & 5 频段多阶滤波器) -->
           <div class="space-y-3 pt-3 border-t border-pcl-border">
             <div class="flex items-center justify-between">
               <div>
@@ -592,7 +573,6 @@ const handleOpenDefaultMusicDir = async () => {
                 </div>
               </div>
 
-              <!-- 实时微型频谱指示器 -->
               <div class="flex items-end gap-1 h-5 px-2 py-1 rounded bg-black/5 dark:bg-white/5 border border-pcl-border" title="实时频段动能分析">
                 <span
                   v-for="(height, i) in spectrumBars"
@@ -604,7 +584,6 @@ const handleOpenDefaultMusicDir = async () => {
               </div>
             </div>
 
-            <!-- 调音预设卡片组 -->
             <div class="grid grid-cols-3 gap-2">
               <button
                 v-for="preset in EQ_PRESETS"
@@ -633,7 +612,6 @@ const handleOpenDefaultMusicDir = async () => {
               </button>
             </div>
 
-            <!-- 自定义 5 频段滑块 (仅在选中自定义模式时展开) -->
             <div
               v-if="store.musicEqPreset === 'custom'"
               class="p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border space-y-2.5"
@@ -679,7 +657,6 @@ const handleOpenDefaultMusicDir = async () => {
               </div>
             </div>
 
-            <!-- 防破音与平滑过渡高级调优 -->
             <div class="flex flex-wrap items-center gap-6 pt-1">
               <label class="flex items-center gap-2 text-pcl-text cursor-pointer select-none" title="通过动态范围压缩器自动抑制瞬态过载，杜绝破音">
                 <input
@@ -703,7 +680,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
           </div>
 
-          <!-- 启停联动选项 -->
           <div class="flex flex-wrap items-center gap-6 pt-1">
             <label class="flex items-center gap-2 text-pcl-text cursor-pointer select-none">
               <input
@@ -725,7 +701,6 @@ const handleOpenDefaultMusicDir = async () => {
             </label>
           </div>
 
-          <!-- 已添加的音乐文件夹管理 -->
           <div class="space-y-2 pt-1 border-t border-pcl-border">
             <div class="flex items-center justify-between">
               <span class="text-pcl-subtext font-medium">
@@ -745,7 +720,6 @@ const handleOpenDefaultMusicDir = async () => {
             </div>
 
             <div class="space-y-1.5">
-              <!-- 默认音乐目录展示 -->
               <div
                 v-if="store.platformInfo?.default_music_dir"
                 class="flex items-center justify-between px-3 py-2 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-[11px]"
@@ -764,7 +738,6 @@ const handleOpenDefaultMusicDir = async () => {
                 </button>
               </div>
 
-              <!-- 用户添加的自定义音乐目录列表 -->
               <div
                 v-for="dir in store.musicDirs"
                 :key="dir"
@@ -796,7 +769,6 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
       </MyCard>
 
-      <!-- 本地可用 Java 检测状态 -->
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'system'"
         title="已检测到的系统 Java"

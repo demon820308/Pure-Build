@@ -1,11 +1,39 @@
 use pcl_base::{
-    platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager, DeviceCodeResponse,
-    DownloadManager, EndpointPingResult, FabricMetaSummary, JavaInfo, JavaScanner, LanRoomInfo,
-    LinkManager, LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner,
-    ModpackManager, ModrinthProject, MusicTrack, PlatformInfo, RemoteVersion, ResourceItem,
+    platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager, CrashAnalysisResult,
+    DeviceCodeResponse, DownloadManager, DownloadProgress, EndpointPingResult, FabricMetaSummary,
+    JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager, LoaderVersionItem,
+    MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager, ModrinthProject,
+    MusicTrack, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle, ResourceItem,
     ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller, VersionScanner,
 };
-use tauri::{AppHandle, Manager};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
+
+struct TauriReporter(AppHandle);
+
+impl ProgressReporter for TauriReporter {
+    fn emit_download(&self, progress: DownloadProgress) {
+        let _ = self.0.emit("download_progress", progress);
+    }
+    fn emit_launch(&self, progress: LaunchProgress) {
+        let _ = self.0.emit("launch_progress", progress);
+    }
+    fn emit_crash(&self, analysis: CrashAnalysisResult) {
+        let _ = self.0.emit("game_crash", analysis);
+    }
+    fn emit_exit(&self, exit_code: i32) {
+        let _ = self.0.emit("game_exit_normal", exit_code);
+    }
+}
+
+fn make_reporter(app: AppHandle) -> ReporterHandle {
+    Arc::new(TauriReporter(app))
+}
+
+#[tauri::command]
+fn check_path_exists(target_path: String) -> bool {
+    std::path::Path::new(&target_path).exists()
+}
 
 #[tauri::command]
 fn get_platform_info() -> PlatformInfo {
@@ -153,7 +181,7 @@ async fn start_install_version(
     loader_version: Option<String>,
 ) -> Result<(), String> {
     VersionInstaller::install_version(
-        app,
+        make_reporter(app),
         game_dir,
         vanilla_version,
         target_name,
@@ -171,7 +199,7 @@ async fn download_minecraft_server(
     version_id: String,
     meta_url: String,
 ) -> Result<String, String> {
-    VersionInstaller::install_server(app, target_dir, version_id, meta_url).await
+    VersionInstaller::install_server(make_reporter(app), target_dir, version_id, meta_url).await
 }
 
 #[tauri::command]
@@ -181,7 +209,7 @@ async fn import_modpack(
     mrpack_path: String,
     custom_instance_name: Option<String>,
 ) -> Result<String, String> {
-    ModpackManager::import_mrpack(app, game_dir, mrpack_path, custom_instance_name).await
+    ModpackManager::import_mrpack(make_reporter(app), game_dir, mrpack_path, custom_instance_name).await
 }
 
 #[tauri::command]
@@ -249,7 +277,7 @@ async fn install_modrinth_resource(
     loader: Option<String>,
 ) -> Result<String, String> {
     CommunityManager::install_resource(
-        app,
+        make_reporter(app),
         game_dir,
         version_path,
         project_id,
@@ -292,7 +320,7 @@ fn launch_minecraft(
     access_token: Option<String>,
 ) -> Result<String, String> {
     MinecraftLauncher::launch_with_auth(
-        app,
+        make_reporter(app),
         &game_dir,
         &version_id,
         &java_path,
@@ -367,6 +395,7 @@ pub fn run() {
         .plugin(log_plugin)
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            check_path_exists,
             get_platform_info,
             get_installed_java,
             get_minecraft_versions,
@@ -412,12 +441,12 @@ pub fn run() {
             close_window
         ])
         .setup(|app| {
-            // 注入 Tauri 标准 app_config_dir（遵循规范 §2）
+            // 注入 Tauri 标准 app_config_dir
             if let Ok(cfg_dir) = app.path().app_config_dir() {
                 platform::set_app_config_dir(cfg_dir);
             }
 
-            // 遵循规范 §3.6：macOS 窗口恢复原生红绿灯装饰（platform 层之外唯一登记的窗口创建 cfg）
+            // macOS 窗口恢复原生红绿灯装饰（platform 层之外唯一登记的窗口创建 cfg）
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_maximizable(false);
                 #[cfg(target_os = "macos")]

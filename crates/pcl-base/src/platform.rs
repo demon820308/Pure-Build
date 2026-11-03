@@ -1,4 +1,4 @@
-//! 全仓唯一的平台抽象层（遵循规范 §1 & §2 & §3）。
+//! 全仓唯一的平台抽象层。
 //! 所有与操作系统、CPU 架构、默认路径、外部命令（explorer/open/xdg-open/taskkill/kill）、
 //! Java 候选目录、可执行文件名、开服脚本生成及权限设置相关的逻辑均唯一收敛于此。
 
@@ -132,7 +132,7 @@ pub fn derive_default_game_dir(os_name: &str, home: Option<&Path>, appdata: Opti
     }
 }
 
-/// 按当前平台推导的默认 `.minecraft` 游戏目录（§3.2）
+/// 按当前平台推导的默认 `.minecraft` 游戏目录
 pub fn default_game_dir() -> PathBuf {
     let home = user_home_dir();
     let appdata = env::var_os("APPDATA").map(PathBuf::from);
@@ -197,7 +197,7 @@ pub fn classpath_separator() -> char {
     }
 }
 
-/// 本平台所有 Java 候选搜索目录（§3.3）
+/// 本平台所有 Java 候选搜索目录
 pub fn java_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let home = user_home_dir();
@@ -351,7 +351,7 @@ pub fn parse_macos_java_home_output(text: &str) -> Vec<PathBuf> {
     paths
 }
 
-/// 按平台打开本地文件夹或定位文件（§3.4：Windows -> explorer，macOS -> open，Linux -> xdg-open）
+/// 按平台打开本地文件夹或定位文件（Windows -> explorer，macOS -> open，Linux -> xdg-open）
 pub fn open_folder(path: &Path) -> Result<(), String> {
     let target = if path.is_file() {
         path.parent().unwrap_or(path)
@@ -393,7 +393,7 @@ pub fn open_folder(path: &Path) -> Result<(), String> {
     }
 }
 
-/// 按平台在系统默认浏览器中打开外部链接（§3.4：Windows -> explorer/start，macOS -> open，Linux -> xdg-open）
+/// 按平台在系统默认浏览器中打开外部链接（Windows -> explorer/start，macOS -> open，Linux -> xdg-open）
 pub fn open_url(url: &str) -> Result<(), String> {
     if url.trim().is_empty() {
         return Err("URL 不能为空".to_string());
@@ -430,7 +430,7 @@ pub fn open_url(url: &str) -> Result<(), String> {
     }
 }
 
-/// 按平台强制终止指定 PID 的进程（§1：Windows -> `taskkill /F`，其余 -> `kill -9`）
+/// 按平台强制终止指定 PID 的进程（Windows -> `taskkill /F`，其余 -> `kill -9`）
 pub fn kill_process(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -471,13 +471,13 @@ pub fn server_script_filename() -> &'static str {
     }
 }
 
-/// 生成本平台开服脚本并设置可执行权限（§1 签名兼容封装，自动读取用户配置的 `max_memory_mb`）
+/// 生成本平台开服脚本并设置可执行权限（自动读取用户配置的 `max_memory_mb`）
 pub fn server_script(dir: &Path, version_id: &str, jar_name: &str) -> Result<String, String> {
     let max_mem = crate::config::ConfigManager::load().max_memory_mb;
     server_script_with_memory(dir, version_id, jar_name, max_mem)
 }
 
-/// 生成本平台开服脚本并设置可执行权限（§3.5：内存取用户配置 `max_memory_mb`，Unix 下 `chmod 0o755`）
+/// 生成本平台开服脚本并设置可执行权限（内存取用户配置 `max_memory_mb`，Unix 下 `chmod 0o755`）
 pub fn server_script_with_memory(
     dir: &Path,
     version_id: &str,

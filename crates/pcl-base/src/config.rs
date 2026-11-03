@@ -248,4 +248,46 @@ mod tests {
         assert_eq!(deserialized.music_eq_custom, vec![3.0, 1.5, -2.0, 2.5, 4.0]);
         assert!(!deserialized.music_compressor);
     }
+
+    #[test]
+    fn test_app_config_minimal_json_fallback_defaults() {
+        let minimal_json = r#"{
+            "game_dir": "/custom/.minecraft",
+            "max_memory_mb": 2048,
+            "player_name": "Tester",
+            "window_width": 1024,
+            "window_height": 768,
+            "theme_hue": 180
+        }"#;
+        let cfg: AppConfig = serde_json::from_str(minimal_json).expect("解析最小核心 JSON 应当使用默认值");
+        assert_eq!(cfg.game_dir, "/custom/.minecraft");
+        assert_eq!(cfg.max_memory_mb, 2048);
+        assert_eq!(cfg.player_name, "Tester");
+        assert_eq!(cfg.window_width, 1024);
+        assert_eq!(cfg.window_height, 768);
+        assert_eq!(cfg.music_volume, 45);
+        assert!(cfg.music_compressor);
+        assert!(cfg.music_crossfade);
+        assert_eq!(cfg.music_eq_preset, "flat");
+        assert_eq!(cfg.music_eq_custom, vec![0.0, 0.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_user_profile_serde_roundtrip() {
+        let profile = UserProfile {
+            name: "Steve".to_string(),
+            uuid: "00000000-0000-0000-0000-000000000001".to_string(),
+            access_token: "secret_token_123".to_string(),
+            avatar_url: "https://textures.minecraft.net/texture/abc".to_string(),
+            auth_type: "msa".to_string(),
+            auth_server: None,
+        };
+        let json = serde_json::to_string(&profile).unwrap();
+        let loaded: UserProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.name, "Steve");
+        assert_eq!(loaded.uuid, "00000000-0000-0000-0000-000000000001");
+        assert_eq!(loaded.access_token, "secret_token_123");
+        assert_eq!(loaded.auth_type, "msa");
+        assert_eq!(loaded.auth_server, None);
+    }
 }

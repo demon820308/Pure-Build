@@ -22,12 +22,13 @@ let unlistenCrash: (() => void) | null = null
 let unlistenLaunchBgm: (() => void) | null = null
 let unlistenExitBgm: (() => void) | null = null
 let unlistenDownloadTask: (() => void) | null = null
+const handleWindowFocus = () => {
+  void store.reconcileOnFocus()
+}
 
-// 迷你播放列表浮层开关与搜索过滤（现代模式位于左下角侧栏，经典模式位于右下角）
 const showMusicPopover = ref(false)
 const musicSearchQuery = ref('')
 
-// 切换导航 Tab 时自动收起播放列表浮层
 watch(() => store.currentTab, () => {
   showMusicPopover.value = false
 })
@@ -76,7 +77,6 @@ const folderBaseName = (folderPath: string): string => {
   return parts[parts.length - 1] || folderPath
 }
 
-// 唤起系统文件夹选择器添加音乐文件夹（自动递归扫描子目录）
 const handleAddMusicFolder = async () => {
   try {
     const selected = await open({
@@ -99,7 +99,6 @@ const handleAddMusicFolder = async () => {
   }
 }
 
-// 右键悬浮球：直接切下一首；若列表为空则打开浮层引导添加文件夹
 const handleMusicBallRightClick = async () => {
   if (store.musicTracks.length === 0) {
     showMusicPopover.value = true
@@ -154,6 +153,7 @@ onMounted(async () => {
   unlistenDownloadTask = await backend.onDownloadProgress((p) => {
     store.updateDownloadProgress(p)
   })
+  window.addEventListener('focus', handleWindowFocus)
 })
 
 onUnmounted(() => {
@@ -161,9 +161,9 @@ onUnmounted(() => {
   if (unlistenLaunchBgm) unlistenLaunchBgm()
   if (unlistenExitBgm) unlistenExitBgm()
   if (unlistenDownloadTask) unlistenDownloadTask()
+  window.removeEventListener('focus', handleWindowFocus)
 })
 
-// 现代模式左侧导航项
 const modernNavItems = [
   { id: 'launch', name: '启动', icon: '🚀' },
   { id: 'download', name: '下载', icon: '📥' },
@@ -173,7 +173,6 @@ const modernNavItems = [
   { id: 'other', name: '百宝箱', icon: '🧰' },
 ]
 
-// 原版 PCL2 FormMain.xaml 顶栏 5 大主导航项 (Tag 0~4)
 const classicNavItems: Array<{
   id: string
   name: string
@@ -196,7 +195,17 @@ const classicNavItems: Array<{
         : 'bg-pcl-bg'
     "
   >
-    <!-- 自定义背景壁纸图层（当用户在设置中配置了壁纸时生效） -->
+    <!-- 全局非阻塞通知横幅 -->
+    <Transition name="fade-slide">
+      <div
+        v-if="store.notificationMessage"
+        class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-black/85 dark:bg-white/95 text-white dark:text-black rounded-lg shadow-lg text-[13px] font-medium flex items-center gap-2 backdrop-blur-md pointer-events-none select-none max-w-[90vw]"
+      >
+        <span>ℹ️</span>
+        <span>{{ store.notificationMessage }}</span>
+      </div>
+    </Transition>
+
     <div
       v-if="store.customBgUrl"
       class="absolute inset-0 pointer-events-none z-0 bg-cover bg-center transition-all duration-300"
@@ -207,14 +216,12 @@ const classicNavItems: Array<{
       }"
     />
 
-    <!-- ==================== 1A. 原版 PCL2 经典顶栏 (FormMain.xaml PanTitle 52px) ==================== -->
     <header
       v-if="store.uiStyle === 'classic'"
       data-tauri-drag-region="deep"
       class="relative z-10 h-[52px] flex items-center justify-between px-5 bg-white dark:bg-[#1e232b] border-b border-black/8 dark:border-white/10 cursor-default shrink-0"
       @mousedown.capture="handleHeaderMouseDown"
     >
-      <!-- 左侧：原版 ShapeTitleLogo 矢量线条 + PCL 字样；若在二级版本设置页则显示 PanTitleInner 返回栏 -->
       <div data-tauri-drag-region="deep" class="flex items-center gap-2.5">
         <template v-if="store.currentTab === 'instance'">
           <button
@@ -245,7 +252,6 @@ const classicNavItems: Array<{
             stroke-linejoin="round"
             class="text-[#1D1D1F] dark:text-gray-100 pointer-events-none"
           >
-            <!-- 矢量绘制 P B L 三字母 -->
             <path
               d="M26,29 v-25 h6 a7,7 0 0 1 0,14 h-6 M47,29 v-25 h6.5 a6,6 0 0 1 0,12 h-6.5 h7 a6.5,6.5 0 0 1 0,13 h-7 M71,4 v25 h13.5"
             />
@@ -256,7 +262,6 @@ const classicNavItems: Array<{
         </template>
       </div>
 
-      <!-- 右上角：复刻 FormMain.xaml PanTopRightHub 胶囊导航托盘 + 窗口控制 -->
       <div
         class="flex items-center bg-[#F2F2F7] dark:bg-white/10 border border-[#E5E5EA] dark:border-white/15 rounded-[18px] p-[3px] gap-0.5 z-10"
       >
@@ -275,7 +280,6 @@ const classicNavItems: Array<{
           <span>{{ item.name }}</span>
         </button>
 
-        <!-- 一键切换经典/现代布局快捷按钮 -->
         <div class="w-[1px] h-4 bg-[#D1D1D6] dark:bg-white/20 mx-1" />
         <button
           class="h-[26px] px-2.5 rounded-[13px] text-[11px] font-medium text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-6)] transition-colors cursor-pointer"
@@ -285,7 +289,7 @@ const classicNavItems: Array<{
           ✨ 现代布局
         </button>
 
-        <!-- Windows/Linux 最小化与关闭按钮（macOS 使用原生红绿灯，自动隐藏） -->
+        <!-- macOS 使用原生红绿灯，Windows/Linux 显示自绘按钮 -->
         <template v-if="!store.platformInfo?.is_macos">
           <div class="w-[1px] h-4 bg-[#D1D1D6] dark:bg-white/20 mx-1" />
           <button
@@ -306,7 +310,6 @@ const classicNavItems: Array<{
       </div>
     </header>
 
-    <!-- ==================== 1B. 现代 PBL 顶栏 (40px) ==================== -->
     <header
       v-else
       data-tauri-drag-region="deep"
@@ -348,9 +351,7 @@ const classicNavItems: Array<{
       </div>
     </header>
 
-    <!-- ==================== 2. 主体区域 ==================== -->
     <div class="relative z-10 flex-1 flex overflow-hidden">
-      <!-- 现代模式下显示最左侧图标导航栏；经典模式下隐藏（由顶栏胶囊 + 各页面内 PanMainLeft 承载） -->
       <aside
         v-if="store.uiStyle === 'modern'"
         class="w-18 flex flex-col items-center py-4 gap-3 bg-pcl-card/30 border-r border-pcl-border shrink-0 select-none"
@@ -370,7 +371,6 @@ const classicNavItems: Array<{
           <span class="text-[10px] scale-90">{{ item.name }}</span>
         </button>
 
-        <!-- 底部常驻：音乐播放器按钮（现代布局左下角） -->
         <button
           class="mt-auto w-12 h-12 rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all duration-300 ease-[var(--pcl-ease-bounce)] active:scale-95 group"
           :class="[
@@ -386,7 +386,6 @@ const classicNavItems: Array<{
           @click="showMusicPopover = !showMusicPopover"
           @contextmenu.prevent="handleMusicBallRightClick"
         >
-          <!-- 底部内嵌细进度条 -->
           <div
             class="absolute bottom-1 left-2 right-2 h-1 rounded-full bg-black/20 dark:bg-white/20 overflow-hidden pointer-events-none"
           >
@@ -409,7 +408,6 @@ const classicNavItems: Array<{
         </button>
       </aside>
 
-      <!-- 核心页面视口（经典模式为无内边距全画幅分屏 PanMain，现代模式带紧凑内边距） -->
       <main
         class="flex-1 overflow-hidden"
         :class="store.uiStyle === 'classic' ? 'p-0' : 'pt-5 px-6 pb-3.5'"
@@ -425,15 +423,12 @@ const classicNavItems: Array<{
       </main>
     </div>
 
-    <!-- ==================== 3. 背景音乐浮层与经典悬浮球 ==================== -->
-    <!-- 浮层外部遮罩（点击浮层外部空白区域自动收起播放器） -->
     <div
       v-if="showMusicPopover"
       class="fixed inset-0 z-30"
       @click="showMusicPopover = false"
     />
 
-    <!-- 迷你播放列表浮层（经典模式靠右下角，现代模式靠左下角侧栏旁） -->
     <Transition name="fade-slide">
       <div
         v-if="showMusicPopover"
@@ -444,7 +439,6 @@ const classicNavItems: Array<{
             : 'left-[80px] bottom-3.5 w-[340px] rounded-2xl bg-pcl-card border border-pcl-border shadow-pcl-window p-4 text-pcl-text backdrop-blur-xl'
         "
       >
-          <!-- 顶部当前曲目信息与快捷操作 -->
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
@@ -480,7 +474,6 @@ const classicNavItems: Array<{
             </button>
           </div>
 
-          <!-- 播放进度条 -->
           <div class="flex items-center gap-2">
             <input
               type="range"
@@ -495,7 +488,6 @@ const classicNavItems: Array<{
             />
           </div>
 
-          <!-- 核心播放控制栏：循环模式 + EQ 调音音效 + 上一曲/播放暂停/下一曲 + 音量 -->
           <div class="flex items-center justify-between gap-1.5">
             <div class="flex items-center gap-1 shrink-0">
               <button
@@ -578,7 +570,6 @@ const classicNavItems: Array<{
             </div>
           </div>
 
-          <!-- 文件夹快捷操作栏 -->
           <div
             class="flex items-center justify-between gap-1.5 pt-2 border-t"
             :class="store.uiStyle === 'classic' ? 'border-black/8' : 'border-pcl-border'"
@@ -623,7 +614,6 @@ const classicNavItems: Array<{
             </button>
           </div>
 
-          <!-- 已添加的自定义音乐文件夹标签列表 -->
           <div v-if="store.musicDirs.length > 0" class="flex flex-wrap gap-1.5 max-h-[54px] overflow-y-auto">
             <div
               v-for="dir in store.musicDirs"
@@ -652,7 +642,6 @@ const classicNavItems: Array<{
             </div>
           </div>
 
-          <!-- 曲目搜索框 -->
           <div v-if="store.musicTracks.length > 5">
             <input
               v-model="musicSearchQuery"
@@ -666,7 +655,6 @@ const classicNavItems: Array<{
             />
           </div>
 
-          <!-- 曲目滚动列表 -->
           <div class="max-h-[180px] overflow-y-auto space-y-1 pr-0.5">
             <div
               v-if="filteredMusicTracks.length === 0"
@@ -718,7 +706,6 @@ const classicNavItems: Array<{
         </div>
       </Transition>
 
-    <!-- 经典模式下的右下角背景音乐悬浮球 (PCL2 经典圆形悬浮球，严格固定在右下角 right-5 bottom-5 绝不漂移) -->
     <div
       v-if="store.uiStyle === 'classic'"
       class="fixed z-30 right-5 bottom-5 pointer-events-auto"
@@ -733,7 +720,6 @@ const classicNavItems: Array<{
         @click="showMusicPopover = !showMusicPopover"
         @contextmenu.prevent="handleMusicBallRightClick"
       >
-        <!-- 经典模式：外圈圆形进度环 -->
         <svg
           class="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
           viewBox="0 0 44 44"
@@ -765,14 +751,12 @@ const classicNavItems: Array<{
       </button>
     </div>
 
-    <!-- ==================== PCL2 经典全局下载/安装常驻任务浮动栏 ==================== -->
     <Transition name="fade-slide">
       <div
         v-if="store.downloadTask"
         class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-white/95 dark:bg-[#1e232b]/95 backdrop-blur-md border border-black/10 dark:border-white/10 shadow-2xl flex items-center gap-3.5 min-w-[380px] max-w-[540px] select-none transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 cursor-pointer"
         @click="store.currentTab = 'download'"
       >
-        <!-- 任务图标指示 -->
         <div
           class="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 transition-colors"
           :class="[
@@ -788,7 +772,6 @@ const classicNavItems: Array<{
           <span v-else class="animate-spin text-xs">⏳</span>
         </div>
 
-        <!-- 任务核心内容区 -->
         <div class="flex-1 min-w-0 flex flex-col gap-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-pcl-text truncate max-w-[280px]">
@@ -802,7 +785,6 @@ const classicNavItems: Array<{
             </span>
           </div>
 
-          <!-- 动态进度条 -->
           <div class="w-full h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
             <div
               class="h-full rounded-full transition-all duration-300 ease-out"
@@ -811,14 +793,12 @@ const classicNavItems: Array<{
             />
           </div>
 
-          <!-- 步骤文案与速度/文件数 -->
           <div class="flex items-center justify-between text-[11px] text-pcl-subtext">
             <span class="truncate max-w-[260px]">{{ store.downloadTask.step }}</span>
             <span class="shrink-0 font-mono text-[10px]">{{ store.downloadTask.speed_text }}</span>
           </div>
         </div>
 
-        <!-- 动作操作区 -->
         <div class="shrink-0 flex items-center gap-1.5 pl-1 border-l border-black/8 dark:border-white/10">
           <button
             v-if="store.currentTab !== 'download'"
@@ -840,7 +820,6 @@ const classicNavItems: Array<{
       </div>
     </Transition>
 
-    <!-- 全局游戏崩溃诊断弹窗 (PCL2 经典风格) -->
     <CrashDialog
       v-if="crashReport"
       :crash="crashReport"

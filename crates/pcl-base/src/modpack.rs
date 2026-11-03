@@ -1,6 +1,6 @@
 //! 整合包（Modpack）导入与导出引擎。
 //! 支持 Modrinth `.mrpack` 标准格式整合包的解析、底层核心与加载器自动安装、并发下载模组资源及解压 `overrides`。
-//! 严格遵循项目反写死与防 zip-slip 规范（§2 & §4）。
+//! 严格遵循路径安全与防 zip-slip 校验。
 
 use crate::config::ConfigManager;
 use crate::download::DownloadManager;
@@ -13,7 +13,7 @@ use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use crate::reporter::ReporterHandle;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use walkdir::WalkDir;
@@ -46,7 +46,7 @@ pub struct ModpackFileEntry {
 pub struct ModpackManager;
 
 impl ModpackManager {
-    /// 将整合包内的相对路径字符串安全转换为位于 `base_dir` 下的 `PathBuf`（防止 `../` 逃逸，§4）
+    /// 将整合包内的相对路径字符串安全转换为位于 `base_dir` 下的 `PathBuf`（防止 `../` 路径逃逸）
     pub fn sanitize_relative_path(base_dir: &Path, raw_rel: &str) -> Option<PathBuf> {
         let mut out = base_dir.to_path_buf();
         let mut has_segment = false;
@@ -69,7 +69,7 @@ impl ModpackManager {
 
     /// 导入本地 `.mrpack` 整合包到指定的 `.minecraft` 目录
     pub async fn import_mrpack(
-        app: AppHandle,
+        reporter: ReporterHandle,
         game_dir_str: String,
         mrpack_path_str: String,
         custom_instance_name: Option<String>,
@@ -101,18 +101,15 @@ impl ModpackManager {
 
         let emit_progress =
             |step: &str, pct: f32, speed: &str, finished: bool, err: Option<String>| {
-                let _ = app.emit(
-                    "download_progress",
-                    DownloadProgress {
-                        version_id: instance_name.clone(),
-                        vanilla_version: None,
-                        step: step.to_string(),
-                        percentage: pct,
-                        speed_text: speed.to_string(),
-                        is_finished: finished,
-                        error: err,
-                    },
-                );
+                reporter.emit_download(DownloadProgress {
+                    version_id: instance_name.clone(),
+                    vanilla_version: None,
+                    step: step.to_string(),
+                    percentage: pct,
+                    speed_text: speed.to_string(),
+                    is_finished: finished,
+                    error: err,
+                });
             };
 
         emit_progress(
@@ -151,7 +148,7 @@ impl ModpackManager {
             .ok_or_else(|| format!("未在官方清单中找到 Minecraft {}", mc_version))?;
 
         VersionInstaller::install_version(
-            app.clone(),
+            reporter.clone(),
             game_dir_str.clone(),
             mc_version,
             Some(instance_name.clone()),
@@ -194,7 +191,7 @@ impl ModpackManager {
                 };
                 let sem = semaphore.clone();
                 let comp = completed.clone();
-                let app_clone = app.clone();
+                let reporter_clone = reporter.clone();
                 let inst_name = instance_name.clone();
 
                 let mut candidate_urls = Vec::new();
@@ -213,30 +210,31 @@ impl ModpackManager {
                     } else {
                         None
                     };
+                    let exp_sha1 = file_entry.hashes.get("sha1").map(|s| s.as_str());
+                    let exp_sha512 = file_entry.hashes.get("sha512").map(|s| s.as_str());
 
-                    let res = VersionInstaller::download_file_with_retry(
+                    let res = crate::installer::download::download_file_with_retry_and_hashes(
                         client,
                         &candidate_urls,
                         &dest_path,
                         expected,
+                        exp_sha1,
+                        exp_sha512,
                         |_, _| {},
                     )
                     .await;
 
                     let done = comp.fetch_add(1, Ordering::Relaxed) + 1;
                     let pct = 85.0 + (done as f32 / total_files as f32) * 12.0;
-                    let _ = app_clone.emit(
-                        "download_progress",
-                        DownloadProgress {
-                            version_id: inst_name,
-                            vanilla_version: None,
-                            step: format!("正在并发下载整合包模组与资源 ({}/{})...", done, total_files),
-                            percentage: pct,
-                            speed_text: format!("{}/{}", done, total_files),
-                            is_finished: false,
-                            error: None,
-                        },
-                    );
+                    reporter_clone.emit_download(DownloadProgress {
+                        version_id: inst_name,
+                        vanilla_version: None,
+                        step: format!("正在并发下载整合包模组与资源 ({}/{})...", done, total_files),
+                        percentage: pct,
+                        speed_text: format!("{}/{}", done, total_files),
+                        is_finished: false,
+                        error: None,
+                    });
                     res.map_err(|e| format!("{} ({})", file_entry.path, e))
                 });
             }
@@ -257,7 +255,7 @@ impl ModpackManager {
             }
         }
 
-        // 4. 解压 overrides/ 与 client-overrides/ 覆盖文件到版本隔离目录（遵循 §4 防 zip-slip）
+        // 4. 解压 overrides/ 与 client-overrides/ 覆盖文件到版本隔离目录（安全防 zip-slip）
         emit_progress("正在释放整合包配置文件 (overrides)...", 98.0, "解压配置", false, None);
         {
             let file = File::open(mrpack_path).map_err(|e| e.to_string())?;
@@ -351,17 +349,13 @@ impl ModpackManager {
             .map_err(|e| e.to_string())?;
 
         // 将 mods / config / resourcepacks / shaderpacks 写入 overrides/
+        let effective_game_dir = crate::version::resolve_game_dir(game_dir, version_dir);
         let folders_to_include = ["mods", "config", "resourcepacks", "shaderpacks"];
         for folder in folders_to_include {
-            let v_sub = version_dir.join(folder);
-            let g_sub = game_dir.join(folder);
-            let source_dir = if v_sub.is_dir() {
-                v_sub
-            } else if g_sub.is_dir() {
-                g_sub
-            } else {
+            let source_dir = effective_game_dir.join(folder);
+            if !source_dir.is_dir() {
                 continue;
-            };
+            }
 
             for entry in WalkDir::new(&source_dir).into_iter().flatten() {
                 let p = entry.path();

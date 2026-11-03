@@ -35,22 +35,13 @@ pub struct MusicTrack {
 pub struct ResourceScanner;
 
 impl ResourceScanner {
-    /// 解析指定版本或全局下的目标资源子目录（如 mods / shaderpacks / resourcepacks / saves）
+    /// 解析指定版本依据隔离策略解析出的目标资源子目录（如 mods / shaderpacks / resourcepacks / saves）
     pub fn resolve_resource_folder<P: AsRef<Path>>(
         version_dir: P,
         game_dir: P,
         folder_name: &str,
     ) -> PathBuf {
-        let v_folder = version_dir.as_ref().join(folder_name);
-        let g_folder = game_dir.as_ref().join(folder_name);
-
-        if v_folder.is_dir() {
-            v_folder
-        } else if g_folder.is_dir() {
-            g_folder
-        } else {
-            v_folder
-        }
+        crate::version::resolve_game_dir(game_dir, version_dir).join(folder_name)
     }
 
     /// 扫描资源包 (resourcepacks) 或光影包 (shaderpacks)
@@ -156,7 +147,7 @@ impl ResourceScanner {
         total_bytes as f32 / (1024.0 * 1024.0)
     }
 
-    /// 调用平台层打开本地文件夹或定位文件（§3.4）
+    /// 调用平台层打开本地文件夹或定位文件
     pub fn open_folder<P: AsRef<Path>>(path: P) -> Result<(), String> {
         platform::open_folder(path.as_ref())
     }

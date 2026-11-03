@@ -37,19 +37,15 @@ const emit = defineEmits<{
     ]"
     @click="emit('click')"
   >
-    <!-- 原版 MyListItem 左侧选中竖条 (ColumnCheck) -->
     <div
       class="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r transition-all duration-200"
       :class="checked ? 'bg-[var(--pcl-brush-3)] opacity-100' : 'opacity-0'"
     />
 
-    <!-- 左侧矢量图标 -->
     <PclIcon v-if="icon" :name="icon" :size="15" class="mr-2.5 ml-1" />
 
-    <!-- 标题文本 -->
     <span class="flex-1 text-[13px] truncate">{{ title }}</span>
 
-    <!-- 右侧悬停显示的快捷图标按钮 (如刷新) -->
     <button
       v-if="actionTitle"
       :title="actionTitle"

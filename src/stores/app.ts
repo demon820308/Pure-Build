@@ -5,39 +5,29 @@ import type { VersionInfo, AppConfig, UserProfile, PlatformInfo, MusicTrack, Lau
 import { audioEngine } from '@/services/audioEngine'
 
 export const useAppStore = defineStore('app', () => {
-  // 当前激活的页面 Tab ('launch' | 'download' | 'instance' | 'setup' | 'link')
   const currentTab = ref('launch')
 
-  // 当前运行平台元数据（启动时从后端获取）
   const platformInfo = ref<PlatformInfo | null>(null)
 
-  // 当前主题色色相 (0 ~ 360)
   const themeHue = ref(205)
 
-  // Minecraft 游戏目录（由后端按平台推导或从用户配置读取，前端零平台字面量）
   const gameDir = ref('')
 
-  // 内存分配 (MB)
   const maxMemoryMb = ref(4096)
 
-  // 分辨率
   const windowWidth = ref(854)
   const windowHeight = ref(480)
 
-  // 是否优先使用 BMCLAPI 镜像源
   const preferMirror = ref(true)
 
-  // 个性化视觉与自定义主页配置
   const customBgUrl = ref('')
   const bgBlur = ref(8)
   const bgOpacity = ref(85)
   const customHomepageNotice = ref('')
   const uiStyle = ref<'classic' | 'modern'>('classic')
 
-  // 是否隐藏外置登录入口（默认隐藏 = true）
   const hideYggdrasilLogin = ref(true)
 
-  // ==================== 背景音乐 (BGM) 持久化配置与播放状态 ====================
   const musicDirs = ref<string[]>([])
   const musicVolume = ref(45)
   const musicPlayMode = ref<'shuffle' | 'list' | 'single'>('shuffle')
@@ -62,7 +52,6 @@ export const useAppStore = defineStore('app', () => {
   let wasPlayingBeforeLaunch = false
   let consecutiveErrors = 0
 
-  // 绑定 Web Audio DSP 调音引擎事件
   audioEngine.onTimeUpdate = (currentTime, duration, progress) => {
     musicCurrentTime.value = currentTime
     musicDuration.value = duration
@@ -132,7 +121,6 @@ export const useAppStore = defineStore('app', () => {
     shuffleQueue = copy
   }
 
-  // 从待播队列取出下一首曲目
   const pickNextTrack = (isAutoEnded = false): MusicTrack | null => {
     if (musicTracks.value.length === 0) return null
     if (isAutoEnded && musicPlayMode.value === 'single' && currentTrack.value) {
@@ -165,8 +153,69 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 加载并播放指定曲目 (经 Web Audio DSP 调音引擎)
+  const notificationMessage = ref('')
+  let notificationTimer: any = null
+  const showNotification = (msg: string) => {
+    notificationMessage.value = msg
+    if (notificationTimer) clearTimeout(notificationTimer)
+    notificationTimer = setTimeout(() => {
+      notificationMessage.value = ''
+    }, 4500)
+  }
+
+  const instanceRefreshTrigger = ref(0)
+
+  const validateTargetExists = async (targetPath?: string | null, targetLabel = '目标项'): Promise<boolean> => {
+    if (!targetPath || !targetPath.trim()) {
+      showNotification(`操作中止：${targetLabel}路径无效或未指定`)
+      return false
+    }
+    try {
+      const exists = await backend.checkPathExists(targetPath)
+      if (!exists) {
+        showNotification(`【${targetLabel}】在本地磁盘已不存在，已自动刷新同步状态`)
+        await refreshInstalledVersions()
+        if (musicDirs.value.length > 0) {
+          await refreshMusicPlaylist(false, false)
+        }
+        instanceRefreshTrigger.value++
+        return false
+      }
+      return true
+    } catch {
+      return true
+    }
+  }
+
+  let lastFocusReconcile = 0
+  const reconcileOnFocus = async () => {
+    const now = Date.now()
+    if (now - lastFocusReconcile < 2000) return
+    lastFocusReconcile = now
+    await refreshInstalledVersions()
+    if (musicDirs.value.length > 0) {
+      await refreshMusicPlaylist(false, false)
+    }
+    instanceRefreshTrigger.value++
+  }
+
   const playTrack = async (track: MusicTrack, shouldPlay = true, recordHistory = true) => {
+    if (!track) return
+
+    if (!await validateTargetExists(track.path, `音乐曲目【${track.name}】`)) {
+      musicTracks.value = musicTracks.value.filter((t) => t.path !== track.path)
+      isMusicPlaying.value = false
+      if (currentTrack.value?.path === track.path) {
+        const next = pickNextTrack(false)
+        if (next) {
+          void playTrack(next, shouldPlay, false)
+        } else {
+          currentTrack.value = null
+        }
+      }
+      return
+    }
+
     musicError.value = ''
     if (recordHistory && currentTrack.value && currentTrack.value.path !== track.path) {
       historyStack.push(currentTrack.value.path)
@@ -203,7 +252,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 播放 / 暂停切换 (带平滑淡入淡出防爆音)
   const toggleMusicPlay = async () => {
     if (musicTracks.value.length === 0) {
       await refreshMusicPlaylist(true)
@@ -228,7 +276,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 下一首（右键快捷切歌或点击下一曲按钮）
   const playNextTrack = async () => {
     if (musicTracks.value.length === 0) return
     if (musicTracks.value.length === 1 && currentTrack.value) {
@@ -243,7 +290,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 上一首
   const playPrevTrack = async () => {
     if (musicTracks.value.length === 0) return
     while (historyStack.length > 0) {
@@ -261,7 +307,6 @@ export const useAppStore = defineStore('app', () => {
     await playTrack(musicTracks.value[prevIdx], true, false)
   }
 
-  // 拖拽进度条跳转 (0 ~ 100)
   const seekMusic = (percent: number) => {
     const duration = audioEngine.getDuration()
     if (!duration || !Number.isFinite(duration)) return
@@ -272,7 +317,6 @@ export const useAppStore = defineStore('app', () => {
     musicCurrentTime.value = targetSeconds
   }
 
-  // 设置音量 (0 ~ 100) 映射对数感知曲线
   const setMusicVolume = (vol: number) => {
     const clamped = Math.max(0, Math.min(100, Math.round(vol)))
     musicVolume.value = clamped
@@ -280,14 +324,12 @@ export const useAppStore = defineStore('app', () => {
     saveCurrentConfig()
   }
 
-  // 切换均衡器调音预设 ('flat' | 'bass_boost' | 'ambient' | 'vocal' | 'warm' | 'custom')
   const setMusicEqPreset = (presetId: string) => {
     musicEqPreset.value = presetId
     audioEngine.setPreset(presetId, musicEqCustom.value)
     saveCurrentConfig()
   }
 
-  // 调整自定义频段增益 (-12 ~ +12 dB)
   const setMusicEqCustomBand = (bandIdx: number, gainDb: number) => {
     if (bandIdx >= 0 && bandIdx < 5) {
       const clamped = Math.max(-12, Math.min(12, Math.round(gainDb * 10) / 10))
@@ -297,28 +339,24 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 重置自定义均衡器为平直 (0dB)
   const resetMusicEqCustom = () => {
     musicEqCustom.value = [0, 0, 0, 0, 0]
     audioEngine.setPreset('custom', [0, 0, 0, 0, 0])
     saveCurrentConfig()
   }
 
-  // 设置动态防破音压缩器开关
   const setMusicCompressor = (enabled: boolean) => {
     musicCompressor.value = enabled
     audioEngine.setCompressorEnabled(enabled)
     saveCurrentConfig()
   }
 
-  // 设置平滑声学过渡淡入淡出开关
   const setMusicCrossfade = (enabled: boolean) => {
     musicCrossfade.value = enabled
     audioEngine.setCrossfadeEnabled(enabled)
     saveCurrentConfig()
   }
 
-  // 切换循环模式 ('shuffle' -> 'list' -> 'single')
   const setMusicPlayMode = (mode: 'shuffle' | 'list' | 'single') => {
     musicPlayMode.value = mode
     if (mode === 'shuffle') {
@@ -333,7 +371,6 @@ export const useAppStore = defineStore('app', () => {
     setMusicPlayMode(next)
   }
 
-  // 扫描并刷新音乐播放列表
   const refreshMusicPlaylist = async (shouldPlayNow = false, isFirstLoad = false) => {
     const tracks = await backend.scanMusicFolders(musicDirs.value)
     musicTracks.value = tracks
@@ -357,7 +394,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 添加自定义音乐文件夹（自动去重并扫描子文件夹）
   const addMusicFolder = async (folderPath: string) => {
     const trimmed = folderPath.trim()
     if (!trimmed) return
@@ -368,7 +404,6 @@ export const useAppStore = defineStore('app', () => {
     await refreshMusicPlaylist(!isMusicPlaying.value)
   }
 
-  // 移除自定义音乐文件夹
   const removeMusicFolder = async (folderPath: string) => {
     musicDirs.value = musicDirs.value.filter((d) => d !== folderPath)
     await saveCurrentConfig()
@@ -394,19 +429,14 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 当前选中的真实版本
   const currentVersion = ref<VersionInfo | null>(null)
 
-  // 本地真实已安装版本列表
   const installedVersions = ref<VersionInfo[]>([])
 
-  // 当前登录的用户身份 (正版档案或离线档案，持久化于后端 app_config_dir)
   const userProfile = ref<UserProfile | null>(null)
 
-  // 离线/自定义玩家昵称
   const playerName = ref('Steve')
 
-  // ==================== 游戏运行与启动生命周期（全局共享状态，切换 Tab 不丢失） ====================
   const runningPid = ref<number | null>(null)
   const isLaunching = ref(false)
   const launchProgress = ref<LaunchProgress | null>(null)
@@ -417,7 +447,6 @@ export const useAppStore = defineStore('app', () => {
     launchProgress.value = null
   }
 
-  // ==================== 全局下载与安装任务生命周期（原版 PCL2 体验，切换 Tab 不丢失） ====================
   const downloadTask = ref<DownloadProgress | null>(null)
   const isDownloading = computed(() => !!downloadTask.value && !downloadTask.value.is_finished)
 
@@ -440,14 +469,12 @@ export const useAppStore = defineStore('app', () => {
     downloadTask.value = null
   }
 
-  // 设置主题色相并保存
   const setThemeHue = (hue: number) => {
     themeHue.value = hue
     document.documentElement.style.setProperty('--pcl-hue', hue.toString())
     saveCurrentConfig()
   }
 
-  // 切换 UI 界面风格与布局 ('classic' = 原版 PCL2 经典布局, 'modern' = 现代侧栏布局)
   const setUiStyle = (style: 'classic' | 'modern') => {
     uiStyle.value = style
     document.documentElement.setAttribute('data-ui-style', style)
@@ -504,7 +531,7 @@ export const useAppStore = defineStore('app', () => {
         document.documentElement.style.setProperty('--pcl-hue', cfg.theme_hue.toString())
         document.documentElement.setAttribute('data-ui-style', uiStyle.value)
 
-        // 从后端安全凭据文件读取已登录的 Profile（不再使用前端 localStorage）
+        // Profile 读自后端凭据文件
         if (savedProfile && !(hideYggdrasilLogin.value && savedProfile.auth_type === 'yggdrasil')) {
           userProfile.value = savedProfile
           playerName.value = savedProfile.name
@@ -520,13 +547,27 @@ export const useAppStore = defineStore('app', () => {
     return initPromise
   }
 
-  // 刷新本地已安装版本列表
   const refreshInstalledVersions = async () => {
     if (!gameDir.value) return
     try {
       const list = await backend.getMinecraftVersions(gameDir.value)
       installedVersions.value = list
-      if (!currentVersion.value && list.length > 0) {
+      if (currentVersion.value) {
+        const stillExists = list.some((v) => v.id === currentVersion.value!.id)
+        if (!stillExists) {
+          const removedName = currentVersion.value.name || currentVersion.value.id
+          if (list.length > 0) {
+            currentVersion.value = list[0]
+            showNotification(`已检测到版本【${removedName}】在磁盘被删除，已自动切换至【${list[0].name || list[0].id}】`)
+          } else {
+            currentVersion.value = null
+            showNotification(`已检测到版本【${removedName}】在磁盘被删除，当前暂无可启动版本`)
+          }
+        } else {
+          const updated = list.find((v) => v.id === currentVersion.value!.id)
+          if (updated) currentVersion.value = updated
+        }
+      } else if (list.length > 0) {
         currentVersion.value = list[0]
       }
     } catch (e) {
@@ -534,7 +575,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 保存当前用户 Profile 到后端凭据存储
   const setUserProfile = async (profile: UserProfile | null) => {
     userProfile.value = profile
     if (profile) {
@@ -547,7 +587,6 @@ export const useAppStore = defineStore('app', () => {
     }
   }
 
-  // 触发保存全局配置
   const saveCurrentConfig = async () => {
     const cfg: AppConfig = {
       game_dir: gameDir.value,
@@ -623,6 +662,11 @@ export const useAppStore = defineStore('app', () => {
     isDownloading,
     updateDownloadProgress,
     clearDownloadTask,
+    notificationMessage,
+    showNotification,
+    instanceRefreshTrigger,
+    validateTargetExists,
+    reconcileOnFocus,
     setThemeHue,
     setUiStyle,
     initConfig,

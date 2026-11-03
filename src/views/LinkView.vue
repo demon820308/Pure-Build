@@ -12,14 +12,12 @@ const store = useAppStore()
 const rooms = ref<LanRoomInfo[]>([])
 const isScanning = ref(false)
 
-// 创建/广播房间表单
 const hostMotd = ref('PBL 好友联机世界')
 const hostIp = ref('127.0.0.1')
 const hostPort = ref(25565)
 const isBroadcasting = ref(false)
 const createdRoom = ref<LanRoomInfo | null>(null)
 
-// 邀请码解析表单
 const inputInviteCode = ref('')
 const decodedResult = ref<{ ip: string; port: number; address: string } | null>(null)
 const decodeError = ref('')
@@ -97,7 +95,6 @@ onMounted(() => {
 
 <template>
   <div class="h-full flex overflow-hidden" :class="store.uiStyle === 'classic' ? 'flex-row gap-0' : 'flex-col gap-4'">
-    <!-- 原版 PCL2 经典左侧 152px 菜单栏 (PageLinkLeft.xaml) -->
     <div
       v-if="store.uiStyle === 'classic'"
       class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
@@ -115,7 +112,6 @@ onMounted(() => {
       class="flex-1 h-full flex flex-col gap-4 overflow-y-auto"
       :class="store.uiStyle === 'classic' ? 'p-5' : 'pr-1'"
     >
-    <!-- 顶部标题栏 -->
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
@@ -148,7 +144,6 @@ onMounted(() => {
     </MyHint>
 
     <div class="grid grid-cols-2 gap-4">
-      <!-- 左侧：发布房间与生成邀请码 -->
       <MyCard title="创建联机广播 & 生成邀请码" subtitle="将你在游戏内开放的端口生成邀请码分享给好友">
         <div class="space-y-3 text-xs">
           <div>
@@ -213,7 +208,6 @@ onMounted(() => {
         </div>
       </MyCard>
 
-      <!-- 右侧：输入邀请码解析直连地址 -->
       <MyCard title="凭邀请码加入好友房间" subtitle="解析好友发来的 PBL-LINK 邀请码并获取直连地址">
         <div class="space-y-3 text-xs">
           <div>
@@ -259,7 +253,6 @@ onMounted(() => {
       </MyCard>
     </div>
 
-    <!-- 已发现的局域网房间列表 -->
     <MyCard
       :title="`已发现的局域网世界 (${rooms.length})`"
       subtitle="自动监听 UDP 224.0.2.60:4445 广播报文"
