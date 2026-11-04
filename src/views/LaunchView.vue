@@ -6,8 +6,9 @@ import MyButton from '@/components/base/MyButton.vue'
 import MyHint from '@/components/base/MyHint.vue'
 import PclIcon from '@/components/base/PclIcon.vue'
 import LoginModal from '@/components/auth/LoginModal.vue'
+import VersionPicker from '@/components/launch/VersionPicker.vue'
 import { backend } from '@/services/backend'
-import type { JavaInfo, VersionInfo } from '@/services/backend'
+import type { JavaInfo } from '@/services/backend'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 const store = useAppStore()
@@ -140,11 +141,6 @@ const handleKillGame = async () => {
       alert(`终止进程失败: ${e}`)
     }
   }
-}
-
-const selectVersion = (v: VersionInfo) => {
-  store.currentVersion = v
-  showVersionPicker.value = false
 }
 
 const openLoginModal = (mode: 'msa' | 'yggdrasil') => {
@@ -315,21 +311,11 @@ const handleLaunch = async () => {
               </button>
             </div>
 
-            <div
+            <VersionPicker
               v-if="showVersionPicker"
-              class="max-h-44 overflow-y-auto rounded-[4px] border border-[var(--pcl-brush-5)] bg-white dark:bg-[#222730] shadow-md p-1 space-y-0.5"
-            >
-              <div
-                v-for="v in store.installedVersions"
-                :key="v.id"
-                class="px-2.5 py-1.5 rounded-[3px] text-xs flex items-center justify-between cursor-pointer hover:bg-[var(--pcl-brush-7)]"
-                :class="store.currentVersion?.id === v.id && 'bg-[var(--pcl-brush-6)] font-bold text-[var(--pcl-brush-2)]'"
-                @click="selectVersion(v)"
-              >
-                <span class="truncate">{{ v.name }}</span>
-                <span class="text-[10px] text-[#737373] ml-2 shrink-0">{{ v.loader || '原版' }}</span>
-              </div>
-            </div>
+              layout="classic"
+              @select="showVersionPicker = false"
+            />
           </div>
         </template>
 
@@ -557,30 +543,11 @@ const handleLaunch = async () => {
                 在该目录下未检测到有效游戏版本，请前往「下载」页安装。
               </div>
 
-              <div
+              <VersionPicker
                 v-if="showVersionPicker"
-                class="mt-3 space-y-1.5 border-t border-pcl-border pt-2.5 max-h-44 overflow-y-auto"
-              >
-                <div
-                  v-for="v in store.installedVersions"
-                  :key="v.id"
-                  class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition-colors text-xs"
-                  :class="
-                    store.currentVersion?.id === v.id
-                      ? 'bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary font-semibold'
-                      : 'hover:bg-black/5 dark:hover:bg-white/5 text-pcl-text'
-                  "
-                  @click="selectVersion(v)"
-                >
-                  <div class="flex items-center gap-2 truncate">
-                    <span>{{ v.loader ? '🧩' : '⛏️' }}</span>
-                    <span class="truncate">{{ v.name }}</span>
-                  </div>
-                  <span class="text-pcl-subtext shrink-0 ml-2">
-                    {{ store.currentVersion?.id === v.id ? '当前选中' : v.loader || '原版' }}
-                  </span>
-                </div>
-              </div>
+                layout="modern"
+                @select="showVersionPicker = false"
+              />
             </MyCard>
 
             <MyCard
