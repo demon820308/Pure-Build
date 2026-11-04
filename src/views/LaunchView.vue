@@ -7,15 +7,16 @@ import MyHint from '@/components/base/MyHint.vue'
 import PclIcon from '@/components/base/PclIcon.vue'
 import LoginModal from '@/components/auth/LoginModal.vue'
 import VersionPicker from '@/components/launch/VersionPicker.vue'
+import JavaSelectPanel from '@/components/launch/JavaSelectPanel.vue'
 import { backend } from '@/services/backend'
 import type { JavaInfo } from '@/services/backend'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 const store = useAppStore()
 const { isLaunching, launchProgress, runningPid } = storeToRefs(store)
-const javaList = ref<JavaInfo[]>([])
 const selectedJava = ref<JavaInfo | null>(null)
 const isScanning = ref(false)
+const javaPanelRef = ref<InstanceType<typeof JavaSelectPanel> | null>(null)
 const showVersionPicker = ref(false)
 const launchMessage = ref<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
 let launchMessageTimer: ReturnType<typeof setTimeout> | null = null
@@ -45,30 +46,16 @@ let unlistenCrash: (() => void) | null = null
 const showLoginModal = ref(false)
 const loginMode = ref<'msa' | 'yggdrasil'>('msa')
 
-const scanJavaRuntime = async () => {
-  isScanning.value = true
-  try {
-    const javas = await backend.getInstalledJava()
-    javaList.value = javas
-    const reqMajor = store.currentVersion?.java_version || 8
-    const matched = javas.find((j) => j.major_version === reqMajor)
-    if (matched) {
-      selectedJava.value = matched
-    } else if (javas.length > 0 && !selectedJava.value) {
-      selectedJava.value = javas[0]
-    }
-  } finally {
-    isScanning.value = false
-  }
-}
-
 const loadData = async () => {
   isScanning.value = true
   try {
     if (!store.gameDir) {
       await store.initConfig()
     }
-    await Promise.all([scanJavaRuntime(), store.refreshInstalledVersions()])
+    await Promise.all([
+      javaPanelRef.value?.scanJavaRuntime(),
+      store.refreshInstalledVersions()
+    ])
   } finally {
     isScanning.value = false
   }
@@ -85,7 +72,6 @@ watch(
 
 onMounted(async () => {
   await store.initConfig()
-  void scanJavaRuntime()
 
   // 监听后端派发的启动进度事件
   unlistenLaunch = await backend.onLaunchProgress((p) => {
@@ -394,41 +380,12 @@ const handleLaunch = async () => {
           <div class="text-xs text-pcl-text whitespace-pre-wrap leading-relaxed">
             {{
               store.customHomepageNotice ||
-              `当前工作目录：${store.gameDir}\n已扫描到本地版本：${store.installedVersions.length} 个 | 可用 Java 运行时：${javaList.length} 个。\n点击左侧面板底部的齿轮按钮可进入单版本 Mod、存档与整合包管理。`
+              `当前工作目录：${store.gameDir}\n已扫描到本地版本：${store.installedVersions.length} 个 | 可用 Java 运行时：${javaPanelRef?.javaList.length || 0} 个。\n点击左侧面板底部的齿轮按钮可进入单版本 Mod、存档与整合包管理。`
             }}
           </div>
         </MyCard>
 
-        <MyCard title="Java 运行环境选择" subtitle="点击切换用于启动当前版本的 Java 虚拟机">
-          <template #extra>
-            <MyButton type="text" size="small" :loading="isScanning" @click="loadData">
-              刷新
-            </MyButton>
-          </template>
-          <div class="space-y-1.5">
-            <div
-              v-for="(j, idx) in javaList"
-              :key="j.path"
-              class="flex items-center justify-between px-3 py-2 rounded-[4px] border text-xs cursor-pointer transition-colors"
-              :class="
-                selectedJava?.path === j.path
-                  ? 'border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-7)] text-[var(--pcl-brush-2)]'
-                  : 'border-black/8 bg-white/60 hover:bg-[var(--pcl-brush-8)]'
-              "
-              @click="selectedJava = j"
-            >
-              <div class="truncate pr-2">
-                <span class="font-semibold">Java {{ j.version }}</span>
-                <span class="ml-2 text-[11px] text-[#737373]">({{ j.arch || '64-Bit' }})</span>
-                <span v-if="idx === 0" class="ml-1.5 text-[10px] text-[var(--pcl-brush-3)] font-bold">[推荐]</span>
-                <div class="text-[11px] text-[#8c8c8c] truncate font-mono">{{ j.path }}</div>
-              </div>
-              <span v-if="selectedJava?.path === j.path" class="font-bold text-[var(--pcl-brush-3)] shrink-0">
-                已选中
-              </span>
-            </div>
-          </div>
-        </MyCard>
+        <JavaSelectPanel ref="javaPanelRef" v-model="selectedJava" layout="classic" />
 
         <MyCard title="PBL 经典主题色盘" subtitle="点击标题栏展开 · 实时变换全局 8 阶动态色板" :default-collapsed="true">
           <div class="flex items-center gap-2.5 flex-wrap">
@@ -550,49 +507,7 @@ const handleLaunch = async () => {
               />
             </MyCard>
 
-            <MyCard
-              title="Java 运行时环境"
-              subtitle="点击展开切换用于启动该版本的 Java 虚拟机"
-              :default-collapsed="true"
-            >
-              <template #extra>
-                <span
-                  v-if="selectedJava"
-                  class="px-2 py-0.5 rounded-md bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary text-[11px] font-semibold"
-                >
-                  ☕ Java {{ selectedJava.version }} ({{ selectedJava.arch || '64-Bit' }})
-                </span>
-              </template>
-
-              <div v-if="javaList.length === 0" class="text-xs text-pcl-subtext p-2">
-                正在搜寻 Java 运行时...
-              </div>
-              <div v-else class="space-y-2">
-                <div
-                  v-for="(j, idx) in javaList"
-                  :key="j.path"
-                  class="flex items-center justify-between px-3 py-2 rounded-xl border border-pcl-border bg-black/5 dark:bg-black/25 text-xs cursor-pointer transition-all"
-                  :class="selectedJava?.path === j.path && 'border-pcl-primary bg-pcl-primary/10 ring-1 ring-pcl-primary/30'"
-                  @click="selectedJava = j"
-                >
-                  <div class="flex items-center gap-2.5 overflow-hidden">
-                    <span class="text-base">{{ j.is_jdk ? '☕' : '📦' }}</span>
-                    <div class="truncate">
-                      <div class="font-semibold text-pcl-text flex items-center gap-1.5">
-                        <span>Java {{ j.version }}</span>
-                        <span v-if="idx === 0" class="text-[10px] bg-pcl-primary/20 text-pcl-primary px-1.5 py-0.2 rounded font-bold">推荐</span>
-                        <span class="text-[10px] bg-black/5 dark:bg-white/10 px-1.5 py-0.2 rounded text-pcl-subtext">
-                          {{ j.arch || (j.is_64_bit ? '64-Bit' : '32-Bit') }}
-                        </span>
-                      </div>
-                      <div class="text-[11px] text-pcl-subtext truncate mt-0.5 font-mono" :title="j.path">{{ j.path }}</div>
-                    </div>
-                  </div>
-                  <span v-if="selectedJava?.path === j.path" class="text-pcl-primary font-bold ml-2 shrink-0">✔ 已选</span>
-                  <span v-else class="text-emerald-500 font-bold ml-2 shrink-0">可用</span>
-                </div>
-              </div>
-            </MyCard>
+            <JavaSelectPanel ref="javaPanelRef" v-model="selectedJava" layout="modern" />
           </div>
 
           <div class="col-span-5 flex flex-col gap-3.5 overflow-y-auto pr-0.5">
