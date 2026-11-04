@@ -123,10 +123,17 @@ const handleHeaderMouseDown = (e: MouseEvent) => {
 }
 
 onMounted(async () => {
-  await store.initConfig()
-  requestAnimationFrame(() => {
+  const t2 = performance.timeOrigin + performance.now()
+  const t1 = (window as unknown as { __PBL_T1__?: number }).__PBL_T1__ || t2
+  try {
+    await store.initConfig()
+  } catch (err) {
+    console.error('initConfig error:', err)
+  } finally {
+    const t3 = performance.timeOrigin + performance.now()
+    void backend.reportStartupPerf(t1, t2, t3)
     backend.showMainWindow()
-  })
+  }
   unlistenCrash = await backend.onGameCrash((report) => {
     crashReport.value = report
     store.resetGameState()

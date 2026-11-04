@@ -6,8 +6,12 @@ use pcl_base::{
     MusicTrack, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle, ResourceItem,
     ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller, VersionScanner,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager};
+
+static T0_EPOCH_MS: OnceLock<f64> = OnceLock::new();
+static T0_SETUP_MS: OnceLock<f64> = OnceLock::new();
 
 struct TauriReporter(AppHandle);
 
@@ -382,8 +386,50 @@ fn close_window(app: AppHandle) {
     app.exit(0);
 }
 
+#[tauri::command]
+fn report_startup_perf(t1: f64, t2: f64, t3: f64) {
+    if std::env::var("PBL_PERF_LOG").map(|v| v == "1").unwrap_or(false) {
+        let t0 = *T0_EPOCH_MS.get().unwrap_or(&0.0);
+        let setup_delta = *T0_SETUP_MS.get().unwrap_or(&0.0);
+        let t1_rel = (t1 - t0).max(0.0);
+        let t2_rel = (t2 - t0).max(0.0);
+        let t3_rel = (t3 - t0).max(0.0);
+
+        println!("[PERF] ==================== Startup Performance ====================");
+        println!("[PERF] T0 Process Entry       : 0.00 ms (base)");
+        if setup_delta > 0.0 {
+            println!("[PERF]    �?Rust Setup Done   : +{:.2} ms", setup_delta);
+        }
+        println!("[PERF] T1 main.ts Entry       : +{:.2} ms (delta: +{:.2} ms)", t1_rel, t1_rel);
+        println!("[PERF] T2 App onMounted       : +{:.2} ms (delta: +{:.2} ms)", t2_rel, (t2_rel - t1_rel).max(0.0));
+        println!("[PERF] T3 initConfig Done     : +{:.2} ms (delta: +{:.2} ms)", t3_rel, (t3_rel - t2_rel).max(0.0));
+        println!("[PERF] ------------------------------------------------------------");
+        println!("[PERF] Total Startup Time (T0 -> T3): {:.2} ms", t3_rel);
+        println!("[PERF] ============================================================");
+        let log_file = platform::app_config_dir().join("startup_perf.log");
+        let _ = std::fs::write(
+            log_file,
+            format!(
+                "[PERF] T0 Process Entry: 0.00 ms (base)\n\
+                 [PERF] Rust Setup Done : +{:.2} ms\n\
+                 [PERF] T1 main.ts Entry : +{:.2} ms (delta: +{:.2} ms)\n\
+                 [PERF] T2 App onMounted : +{:.2} ms (delta: +{:.2} ms)\n\
+                 [PERF] T3 initConfig Done: +{:.2} ms (delta: +{:.2} ms)\n\
+                 [PERF] Total Startup Time (T0 -> T3): {:.2} ms\n",
+                setup_delta, t1_rel, t1_rel, t2_rel, (t2_rel - t1_rel).max(0.0), t3_rel, (t3_rel - t2_rel).max(0.0), t3_rel
+            ),
+        );
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs_f64() * 1000.0)
+        .unwrap_or(0.0);
+    let _ = T0_EPOCH_MS.set(now_ms);
+
     let log_plugin = tauri_plugin_log::Builder::new()
         .targets([
             tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
@@ -438,15 +484,16 @@ pub fn run() {
             clean_game_temp_cache,
             show_main_window,
             minimize_window,
-            close_window
+            close_window,
+            report_startup_perf
         ])
-        .setup(|app| {
+        .setup(move |app| {
             // 注入 Tauri 标准 app_config_dir
             if let Ok(cfg_dir) = app.path().app_config_dir() {
                 platform::set_app_config_dir(cfg_dir);
             }
 
-            // macOS 窗口恢复原生红绿灯装饰（platform 层之外唯一登记的窗口创建 cfg）
+            // macOS 窗口恢复原生红绿灯装饰（platform 层之外唯一登记的窗口创�?cfg�?
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_maximizable(false);
                 #[cfg(target_os = "macos")]
@@ -454,7 +501,7 @@ pub fn run() {
                     let _ = window.set_decorations(true);
                 }
 
-                // 兜底机制：若前端异常未在 1.5s 内触发首帧 show_main_window，则自动显示窗口防止隐身
+                // 兜底机制：若前端异常未在 1.5s 内触发首�?show_main_window，则自动显示窗口防止隐身
                 let win_clone = window.clone();
                 tauri::async_runtime::spawn(async move {
                     std::thread::sleep(std::time::Duration::from_millis(1500));
@@ -463,6 +510,13 @@ pub fn run() {
                     }
                 });
             }
+
+            let setup_now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs_f64() * 1000.0)
+                .unwrap_or(0.0);
+            let _ = T0_SETUP_MS.set((setup_now_ms - now_ms).max(0.0));
+
             Ok(())
         })
         .run(tauri::generate_context!())

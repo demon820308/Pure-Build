@@ -582,4 +582,12 @@ export const backend = {
     } catch (e) {
     }
   },
+
+  async reportStartupPerf(t1: number, t2: number, t3: number): Promise<void> {
+    try {
+      await invoke('report_startup_perf', { t1, t2, t3 })
+    } catch {
+      // 容错忽略
+    }
+  },
 }
