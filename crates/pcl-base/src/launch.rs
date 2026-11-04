@@ -20,6 +20,18 @@ pub struct LaunchProgress {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LaunchArgumentsResult {
+    pub required_java_major: u32,
+    pub effective_game_dir: PathBuf,
+    pub natives_dir: PathBuf,
+    pub classpath_entries: Vec<String>,
+    pub classpath: String,
+    pub main_class: String,
+    pub jvm_args: Vec<String>,
+    pub game_args: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LaunchJavaVersion {
     pub component: Option<String>,
@@ -180,14 +192,6 @@ impl MinecraftLauncher {
         let target_arch = platform::mc_os_arch();
         let cfg = ConfigManager::load();
 
-        let mut active_features = HashMap::new();
-        active_features.insert("is_demo_user".to_string(), false);
-        active_features.insert(
-            "has_custom_resolution".to_string(),
-            cfg.window_width > 0 && cfg.window_height > 0,
-        );
-
-        // 1. 搜集 Classpath 并解压当前平台的 Natives 罐
         emit_progress(
             "正在按平台规则解析运行库与解压 Natives...",
             40.0,
@@ -195,205 +199,31 @@ impl MinecraftLauncher {
             false,
             None,
         );
-        let libraries_dir = game_dir.join("libraries");
-        let natives_dir = version_dir.join(format!("{}-natives", version_id));
-        if !natives_dir.exists() {
-            fs::create_dir_all(&natives_dir)
-                .map_err(|e| format!("创建 natives 目录失败: {}", e))?;
-        }
 
-        let mut cp_map: HashMap<String, String> = HashMap::new();
-        let mut cp_order: Vec<String> = Vec::new();
-
-        for lib in &ver_json.libraries {
-            if !Self::check_rules_for_target(&lib.rules, target_os, target_arch, None, &active_features)
-            {
-                continue;
-            }
-
-            // 1.1 处理普通 artifact 或 1.19+ 独立 natives artifact
-            let has_main_artifact = lib
-                .downloads
-                .as_ref()
-                .and_then(|d| d.artifact.as_ref())
-                .is_some()
-                || lib.downloads.is_none();
-
-            if has_main_artifact {
-                let rel_path = if let Some(path_str) = lib
-                    .downloads
-                    .as_ref()
-                    .and_then(|d| d.artifact.as_ref())
-                    .and_then(|a| a.path.as_ref())
-                {
-                    Self::artifact_path_to_pathbuf(path_str)
-                } else {
-                    Self::maven_to_path(&lib.name)
-                };
-
-                let full_lib_path = libraries_dir.join(&rel_path);
-                if full_lib_path.is_file() {
-                    if Self::is_modern_native_library(lib) {
-                        let excludes = lib.extract.as_ref().and_then(|e| e.exclude.as_deref());
-                        let _ = Self::extract_native_jar(&full_lib_path, &natives_dir, excludes);
-                    }
-
-                    let pkg_key = Self::get_package_key(&lib.name);
-                    let full_str = full_lib_path.to_string_lossy().to_string();
-
-                    if !cp_map.contains_key(&pkg_key) {
-                        cp_order.push(pkg_key.clone());
-                    }
-                    cp_map.insert(pkg_key, full_str);
-                }
-            }
-
-            // 1.2 处理 1.18 及以前通过 natives 映射表 + classifiers 指定的平台原生库
-            if let Some((_classifier_key, native_artifact)) =
-                Self::select_native_classifier(lib, target_os, target_arch)
-            {
-                if let Some(ref path_str) = native_artifact.path {
-                    let native_rel_path = Self::artifact_path_to_pathbuf(path_str);
-                    let full_native_jar = libraries_dir.join(native_rel_path);
-                    if full_native_jar.is_file() {
-                        let excludes = lib.extract.as_ref().and_then(|e| e.exclude.as_deref());
-                        let _ = Self::extract_native_jar(&full_native_jar, &natives_dir, excludes);
-                    }
-                }
-            }
-        }
-
-        let mut cp_entries: Vec<String> = cp_order
-            .into_iter()
-            .filter_map(|key| cp_map.remove(&key))
-            .collect();
-
-        // 添加 client.jar（若子版本自身无 jar 且继承自父版本，则回退查找父版本 jar）
-        let local_jar = version_dir.join(format!("{}.jar", version_id));
-        if local_jar.is_file() {
-            cp_entries.push(local_jar.to_string_lossy().to_string());
-        } else if let Some(ref parent_id) = ver_json.inherits_from {
-            let parent_jar = game_dir
-                .join("versions")
-                .join(parent_id)
-                .join(format!("{}.jar", parent_id));
-            if parent_jar.is_file() {
-                cp_entries.push(parent_jar.to_string_lossy().to_string());
-            }
-        }
-
-        let sep = platform::classpath_separator().to_string();
-        let classpath = cp_entries.join(&sep);
-
-        // 2. 准备变量映射表（按当前平台实值替换占位符）
-        let effective_game_dir = crate::version::resolve_game_dir(game_dir, &version_dir);
-        let assets_dir = game_dir.join("assets");
-        let assets_index_name = ver_json
-            .asset_index
-            .as_ref()
-            .map(|a| a.id.clone())
-            .or_else(|| ver_json.assets.clone())
-            .unwrap_or_else(|| "legacy".to_string());
-
-        let auth_uuid = uuid.unwrap_or("55a5228ca5d74e4fb3bd99aa10d8cd98");
-        let token = access_token.unwrap_or("0");
-        let user_type = if access_token.is_some() { "msa" } else { "legacy" };
-
-        let mut vars = HashMap::new();
-        vars.insert("auth_player_name", player_name.to_string());
-        vars.insert("version_name", version_id.to_string());
-        vars.insert("game_directory", effective_game_dir.to_string_lossy().to_string());
-        vars.insert("assets_root", assets_dir.to_string_lossy().to_string());
-        vars.insert("game_assets", assets_dir.to_string_lossy().to_string());
-        vars.insert("assets_index_name", assets_index_name);
-        vars.insert("auth_uuid", auth_uuid.to_string());
-        vars.insert("auth_access_token", token.to_string());
-        vars.insert("user_type", user_type.to_string());
-        vars.insert("version_type", "PCL".to_string());
-        vars.insert("natives_directory", natives_dir.to_string_lossy().to_string());
-        vars.insert("library_directory", libraries_dir.to_string_lossy().to_string());
-        vars.insert("classpath_separator", sep);
-        vars.insert("launcher_name", "PCL".to_string());
-        vars.insert("launcher_version", "408".to_string());
-        vars.insert("classpath", classpath);
-        vars.insert("arch", target_arch.to_string());
-        vars.insert("resolution_width", cfg.window_width.to_string());
-        vars.insert("resolution_height", cfg.window_height.to_string());
-        vars.insert("clientid", "${clientid}".to_string());
-        vars.insert("auth_xuid", "${auth_xuid}".to_string());
-
-        // 3. 构造 JVM 参数（保留版本 JSON 规则选出的平台专属参数如 -XstartOnFirstThread，不覆盖 -Dos.name）
-        let mut jvm_args = Vec::new();
-        jvm_args.push(format!("-Xmx{}m", max_memory_mb));
-        jvm_args.push("-XX:+UnlockExperimentalVMOptions".to_string());
-        jvm_args.push("-XX:+UseG1GC".to_string());
-        jvm_args.push("-XX:-OmitStackTraceInFastThrow".to_string());
-        jvm_args.push("-Djdk.lang.Process.allowAmbiguousCommands=True".to_string());
-        jvm_args.push("-Dstdout.encoding=UTF-8".to_string());
-        jvm_args.push("-Dstderr.encoding=UTF-8".to_string());
-
-        if let Some(args) = &ver_json.arguments {
-            if let Some(jvms) = &args.jvm {
-                let resolved = Self::resolve_arguments(
-                    jvms,
-                    target_os,
-                    target_arch,
-                    None,
-                    &active_features,
-                    &vars,
-                );
-                jvm_args.extend(resolved);
-            }
-        } else if target_os == "osx" {
-            // 对于没有 arguments.jvm 字段的旧版（1.12.2 及以前），macOS 同样需要主线程运行 GLFW
-            jvm_args.push("-XstartOnFirstThread".to_string());
-        }
-
-        if !jvm_args.iter().any(|a| a.contains("java.library.path")) {
-            jvm_args.push(format!(
-                "-Djava.library.path={}",
-                natives_dir.to_string_lossy()
-            ));
-        }
-        if !jvm_args.iter().any(|a| a == "-cp" || a == "-classpath") {
-            jvm_args.push("-cp".to_string());
-            jvm_args.push(vars.get("classpath").cloned().unwrap_or_default());
-        }
-
-        // 4. 构造 Game 参数
-        let mut game_args = Vec::new();
-        if let Some(args) = &ver_json.arguments {
-            if let Some(games) = &args.game {
-                let resolved = Self::resolve_arguments(
-                    games,
-                    target_os,
-                    target_arch,
-                    None,
-                    &active_features,
-                    &vars,
-                );
-                game_args.extend(resolved);
-            }
-        } else if let Some(mc_args) = &ver_json.minecraft_arguments {
-            for token in mc_args.split_whitespace() {
-                game_args.push(Self::replace_vars(token, &vars));
-            }
-            if cfg.window_width > 0 && cfg.window_height > 0 {
-                game_args.push("--width".to_string());
-                game_args.push(cfg.window_width.to_string());
-                game_args.push("--height".to_string());
-                game_args.push(cfg.window_height.to_string());
-            }
-        }
+        let launch_args = Self::build_launch_arguments(
+            &ver_json,
+            game_dir,
+            version_id,
+            target_os,
+            target_arch,
+            None,
+            player_name,
+            max_memory_mb,
+            uuid,
+            access_token,
+            cfg.window_width,
+            cfg.window_height,
+            true,
+        )?;
 
         // 5. 启动实际进程
         emit_progress("正在合成启动参数并唤醒 Java 进程...", 85.0, None, false, None);
 
         let mut cmd = Command::new(&effective_java_str);
-        cmd.current_dir(&effective_game_dir);
-        cmd.args(&jvm_args);
-        cmd.arg(&ver_json.main_class);
-        cmd.args(&game_args);
+        cmd.current_dir(&launch_args.effective_game_dir);
+        cmd.args(&launch_args.jvm_args);
+        cmd.arg(&launch_args.main_class);
+        cmd.args(&launch_args.game_args);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
@@ -472,6 +302,256 @@ impl MinecraftLauncher {
             }
             Err(e) => Err(format!("无法启动 Java 进程: {}", e)),
         }
+    }
+
+    /// 纯函数式构造 Minecraft 启动所需的所有命令行参数与运行时上下文（完全可离线测试）
+    pub fn build_launch_arguments(
+        ver_json: &LaunchVersionJson,
+        game_dir: &Path,
+        version_id: &str,
+        target_os: &str,
+        target_arch: &str,
+        target_os_version: Option<&str>,
+        player_name: &str,
+        max_memory_mb: u32,
+        uuid: Option<&str>,
+        access_token: Option<&str>,
+        window_width: u32,
+        window_height: u32,
+        extract_natives: bool,
+    ) -> Result<LaunchArgumentsResult, String> {
+        let required_java_major = ver_json
+            .java_version
+            .as_ref()
+            .and_then(|j| j.major_version)
+            .unwrap_or(8);
+
+        let version_dir = game_dir.join("versions").join(version_id);
+        let libraries_dir = game_dir.join("libraries");
+        let natives_dir = version_dir.join(format!("{}-natives", version_id));
+        if extract_natives && !natives_dir.exists() {
+            fs::create_dir_all(&natives_dir)
+                .map_err(|e| format!("创建 natives 目录失败: {}", e))?;
+        }
+
+        let mut active_features = HashMap::new();
+        active_features.insert("is_demo_user".to_string(), false);
+        active_features.insert(
+            "has_custom_resolution".to_string(),
+            window_width > 0 && window_height > 0,
+        );
+
+        let mut cp_map: HashMap<String, String> = HashMap::new();
+        let mut cp_order: Vec<String> = Vec::new();
+
+        for lib in &ver_json.libraries {
+            if !Self::check_rules_for_target(
+                &lib.rules,
+                target_os,
+                target_arch,
+                target_os_version,
+                &active_features,
+            ) {
+                continue;
+            }
+
+            // 1.1 处理普通 artifact 或 1.19+ 独立 natives artifact
+            let has_main_artifact = lib
+                .downloads
+                .as_ref()
+                .and_then(|d| d.artifact.as_ref())
+                .is_some()
+                || lib.downloads.is_none();
+
+            if has_main_artifact {
+                let rel_path = if let Some(path_str) = lib
+                    .downloads
+                    .as_ref()
+                    .and_then(|d| d.artifact.as_ref())
+                    .and_then(|a| a.path.as_ref())
+                {
+                    Self::artifact_path_to_pathbuf(path_str)
+                } else {
+                    Self::maven_to_path(&lib.name)
+                };
+
+                let full_lib_path = libraries_dir.join(&rel_path);
+                if full_lib_path.is_file() {
+                    if extract_natives && Self::is_modern_native_library(lib) {
+                        let excludes = lib.extract.as_ref().and_then(|e| e.exclude.as_deref());
+                        let _ = Self::extract_native_jar(&full_lib_path, &natives_dir, excludes);
+                    }
+
+                    let pkg_key = Self::get_package_key(&lib.name);
+                    let full_str = full_lib_path.to_string_lossy().to_string();
+
+                    if !cp_map.contains_key(&pkg_key) {
+                        cp_order.push(pkg_key.clone());
+                    }
+                    cp_map.insert(pkg_key, full_str);
+                }
+            }
+
+            // 1.2 处理 1.18 及以前通过 natives 映射表 + classifiers 指定的平台原生库
+            if let Some((_classifier_key, native_artifact)) =
+                Self::select_native_classifier(lib, target_os, target_arch)
+            {
+                if let Some(ref path_str) = native_artifact.path {
+                    let native_rel_path = Self::artifact_path_to_pathbuf(path_str);
+                    let full_native_jar = libraries_dir.join(native_rel_path);
+                    if full_native_jar.is_file() {
+                        if extract_natives {
+                            let excludes = lib.extract.as_ref().and_then(|e| e.exclude.as_deref());
+                            let _ =
+                                Self::extract_native_jar(&full_native_jar, &natives_dir, excludes);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut cp_entries: Vec<String> = cp_order
+            .into_iter()
+            .filter_map(|key| cp_map.remove(&key))
+            .collect();
+
+        // 添加 client.jar（若子版本自身无 jar 且继承自父版本，则回退查找父版本 jar）
+        let local_jar = version_dir.join(format!("{}.jar", version_id));
+        if local_jar.is_file() {
+            cp_entries.push(local_jar.to_string_lossy().to_string());
+        } else if let Some(ref parent_id) = ver_json.inherits_from {
+            let parent_jar = game_dir
+                .join("versions")
+                .join(parent_id)
+                .join(format!("{}.jar", parent_id));
+            if parent_jar.is_file() {
+                cp_entries.push(parent_jar.to_string_lossy().to_string());
+            }
+        }
+
+        let sep = platform::classpath_separator_for_os(target_os).to_string();
+        let classpath = cp_entries.join(&sep);
+
+        // 2. 准备变量映射表（按目标平台实值替换占位符）
+        let effective_game_dir = crate::version::resolve_game_dir(game_dir, &version_dir);
+        let assets_dir = game_dir.join("assets");
+        let assets_index_name = ver_json
+            .asset_index
+            .as_ref()
+            .map(|a| a.id.clone())
+            .or_else(|| ver_json.assets.clone())
+            .unwrap_or_else(|| "legacy".to_string());
+
+        let auth_uuid = uuid.unwrap_or("55a5228ca5d74e4fb3bd99aa10d8cd98");
+        let token = access_token.unwrap_or("0");
+        let user_type = if access_token.is_some() { "msa" } else { "legacy" };
+
+        let mut vars = HashMap::new();
+        vars.insert("auth_player_name", player_name.to_string());
+        vars.insert("version_name", version_id.to_string());
+        vars.insert(
+            "game_directory",
+            effective_game_dir.to_string_lossy().to_string(),
+        );
+        vars.insert("assets_root", assets_dir.to_string_lossy().to_string());
+        vars.insert("game_assets", assets_dir.to_string_lossy().to_string());
+        vars.insert("assets_index_name", assets_index_name);
+        vars.insert("auth_uuid", auth_uuid.to_string());
+        vars.insert("auth_access_token", token.to_string());
+        vars.insert("user_type", user_type.to_string());
+        vars.insert("version_type", "PCL".to_string());
+        vars.insert(
+            "natives_directory",
+            natives_dir.to_string_lossy().to_string(),
+        );
+        vars.insert(
+            "library_directory",
+            libraries_dir.to_string_lossy().to_string(),
+        );
+        vars.insert("classpath_separator", sep);
+        vars.insert("launcher_name", "PCL".to_string());
+        vars.insert("launcher_version", "408".to_string());
+        vars.insert("classpath", classpath.clone());
+        vars.insert("arch", target_arch.to_string());
+        vars.insert("resolution_width", window_width.to_string());
+        vars.insert("resolution_height", window_height.to_string());
+        vars.insert("clientid", "${clientid}".to_string());
+        vars.insert("auth_xuid", "${auth_xuid}".to_string());
+
+        // 3. 构造 JVM 参数（保留版本 JSON 规则选出的平台专属参数如 -XstartOnFirstThread，不覆盖 -Dos.name）
+        let mut jvm_args = Vec::new();
+        jvm_args.push(format!("-Xmx{}m", max_memory_mb));
+        jvm_args.push("-XX:+UnlockExperimentalVMOptions".to_string());
+        jvm_args.push("-XX:+UseG1GC".to_string());
+        jvm_args.push("-XX:-OmitStackTraceInFastThrow".to_string());
+        jvm_args.push("-Djdk.lang.Process.allowAmbiguousCommands=True".to_string());
+        jvm_args.push("-Dstdout.encoding=UTF-8".to_string());
+        jvm_args.push("-Dstderr.encoding=UTF-8".to_string());
+
+        if let Some(args) = &ver_json.arguments {
+            if let Some(jvms) = &args.jvm {
+                let resolved = Self::resolve_arguments(
+                    jvms,
+                    target_os,
+                    target_arch,
+                    target_os_version,
+                    &active_features,
+                    &vars,
+                );
+                jvm_args.extend(resolved);
+            }
+        } else if target_os == "osx" {
+            // 对于没有 arguments.jvm 字段的旧版（1.12.2 及以前），macOS 同样需要主线程运行 GLFW
+            jvm_args.push("-XstartOnFirstThread".to_string());
+        }
+
+        if !jvm_args.iter().any(|a| a.contains("java.library.path")) {
+            jvm_args.push(format!(
+                "-Djava.library.path={}",
+                natives_dir.to_string_lossy()
+            ));
+        }
+        if !jvm_args.iter().any(|a| a == "-cp" || a == "-classpath") {
+            jvm_args.push("-cp".to_string());
+            jvm_args.push(vars.get("classpath").cloned().unwrap_or_default());
+        }
+
+        // 4. 构造 Game 参数
+        let mut game_args = Vec::new();
+        if let Some(args) = &ver_json.arguments {
+            if let Some(games) = &args.game {
+                let resolved = Self::resolve_arguments(
+                    games,
+                    target_os,
+                    target_arch,
+                    target_os_version,
+                    &active_features,
+                    &vars,
+                );
+                game_args.extend(resolved);
+            }
+        } else if let Some(mc_args) = &ver_json.minecraft_arguments {
+            for token in mc_args.split_whitespace() {
+                game_args.push(Self::replace_vars(token, &vars));
+            }
+            if window_width > 0 && window_height > 0 {
+                game_args.push("--width".to_string());
+                game_args.push(window_width.to_string());
+                game_args.push("--height".to_string());
+                game_args.push(window_height.to_string());
+            }
+        }
+
+        Ok(LaunchArgumentsResult {
+            required_java_major,
+            effective_game_dir,
+            natives_dir,
+            classpath_entries: cp_entries,
+            classpath,
+            main_class: ver_json.main_class.clone(),
+            jvm_args,
+            game_args,
+        })
     }
 
     /// 读取版本 JSON，若存在 `inheritsFrom` 且未内联父版本支持库，则自动合并父版本 JSON

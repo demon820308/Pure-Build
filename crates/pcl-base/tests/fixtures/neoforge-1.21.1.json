@@ -1,0 +1,37 @@
+{
+  "id": "neoforge-21.1.65",
+  "inheritsFrom": "1.21.1",
+  "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+  "arguments": {
+    "game": [
+      "--fml.neoForgeVersion",
+      "21.1.65"
+    ],
+    "jvm": [
+      "-Dneoforge.logging.markers=REGISTRIES",
+      "-Dneoforge.logging.console.level=debug"
+    ]
+  },
+  "libraries": [
+    {
+      "name": "net.neoforged:neoforge:21.1.65",
+      "downloads": {
+        "artifact": {
+          "path": "net/neoforged/neoforge/21.1.65/neoforge-21.1.65.jar",
+          "sha1": "bbbb1111bbbb1111bbbb1111bbbb1111bbbb1111",
+          "size": 18000000
+        }
+      }
+    },
+    {
+      "name": "cpw.mods:bootstraplauncher:2.0.2",
+      "downloads": {
+        "artifact": {
+          "path": "cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+          "sha1": "bbbb2222bbbb2222bbbb2222bbbb2222bbbb2222",
+          "size": 35000
+        }
+      }
+    }
+  ]
+}

@@ -10,7 +10,7 @@ use crate::endpoints::{
 use crate::platform;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn default_prefer_mirror() -> bool {
     true
@@ -148,11 +148,10 @@ impl ConfigManager {
         platform::app_config_dir().join(CREDENTIALS_FILE_NAME)
     }
 
-    /// 读取持久化配置（若文件不存在或 game_dir 为空则使用平台推导默认值）
-    pub fn load() -> AppConfig {
-        let path = Self::config_path();
+    /// 从指定路径读取持久化配置（若文件不存在或 game_dir 为空则使用平台推导默认值）
+    pub fn load_from_path(path: &Path) -> AppConfig {
         if path.is_file() {
-            if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(content) = fs::read_to_string(path) {
                 if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
                     if cfg.game_dir.trim().is_empty() {
                         cfg.game_dir = platform::default_game_dir().to_string_lossy().to_string();
@@ -164,9 +163,8 @@ impl ConfigManager {
         AppConfig::default()
     }
 
-    /// 保存配置到 app_config_dir 下的 JSON 文件
-    pub fn save(cfg: &AppConfig) -> Result<(), String> {
-        let path = Self::config_path();
+    /// 保存配置到指定路径
+    pub fn save_to_path(path: &Path, cfg: &AppConfig) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
         }
@@ -174,11 +172,10 @@ impl ConfigManager {
         fs::write(path, content).map_err(|e| format!("写入配置文件失败: {}", e))
     }
 
-    /// 从 app_config_dir 下的凭据文件读取用户登录 Profile（替代前端 localStorage）
-    pub fn load_profile() -> Option<UserProfile> {
-        let path = Self::credentials_path();
+    /// 从指定路径读取凭据
+    pub fn load_profile_from_path(path: &Path) -> Option<UserProfile> {
         if path.is_file() {
-            if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(content) = fs::read_to_string(path) {
                 if let Ok(profile) = serde_json::from_str::<UserProfile>(&content) {
                     return Some(profile);
                 }
@@ -187,26 +184,45 @@ impl ConfigManager {
         None
     }
 
-    /// 保存或清除用户登录凭据至 app_config_dir 下的凭据文件
-    pub fn save_profile(profile: Option<&UserProfile>) -> Result<(), String> {
-        let path = Self::credentials_path();
+    /// 保存或清除用户登录凭据到指定路径
+    pub fn save_profile_to_path(path: &Path, profile: Option<&UserProfile>) -> Result<(), String> {
         match profile {
             Some(p) => {
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent).map_err(|e| format!("创建凭据目录失败: {}", e))?;
                 }
                 let content = serde_json::to_string_pretty(p).map_err(|e| e.to_string())?;
-                fs::write(&path, content).map_err(|e| format!("写入凭据文件失败: {}", e))?;
-                platform::restrict_credentials_permissions(&path);
+                fs::write(path, content).map_err(|e| format!("写入凭据文件失败: {}", e))?;
+                platform::restrict_credentials_permissions(path);
                 Ok(())
             }
             None => {
                 if path.exists() {
-                    fs::remove_file(&path).map_err(|e| format!("清除凭据文件失败: {}", e))?;
+                    fs::remove_file(path).map_err(|e| format!("清除凭据文件失败: {}", e))?;
                 }
                 Ok(())
             }
         }
+    }
+
+    /// 读取持久化配置（若文件不存在或 game_dir 为空则使用平台推导默认值）
+    pub fn load() -> AppConfig {
+        Self::load_from_path(&Self::config_path())
+    }
+
+    /// 保存配置到 app_config_dir 下的 JSON 文件
+    pub fn save(cfg: &AppConfig) -> Result<(), String> {
+        Self::save_to_path(&Self::config_path(), cfg)
+    }
+
+    /// 从 app_config_dir 下的凭据文件读取用户登录 Profile（替代前端 localStorage）
+    pub fn load_profile() -> Option<UserProfile> {
+        Self::load_profile_from_path(&Self::credentials_path())
+    }
+
+    /// 保存或清除用户登录凭据至 app_config_dir 下的凭据文件
+    pub fn save_profile(profile: Option<&UserProfile>) -> Result<(), String> {
+        Self::save_profile_to_path(&Self::credentials_path(), profile)
     }
 }
 
@@ -289,5 +305,101 @@ mod tests {
         assert_eq!(loaded.access_token, "secret_token_123");
         assert_eq!(loaded.auth_type, "msa");
         assert_eq!(loaded.auth_server, None);
+    }
+
+    struct TempTestDir(PathBuf);
+    impl TempTestDir {
+        fn new(name: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "pcl_config_test_{}_{}",
+                name,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for TempTestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn test_config_save_load_roundtrip_in_tempdir() {
+        let temp = TempTestDir::new("roundtrip");
+        let cfg_path = temp.0.join("custom_config.json");
+
+        let mut cfg = AppConfig::default();
+        cfg.player_name = "AlexEngineer".to_string();
+        cfg.max_memory_mb = 8192;
+        cfg.window_width = 1920;
+        cfg.window_height = 1080;
+        cfg.theme_hue = 240;
+
+        ConfigManager::save_to_path(&cfg_path, &cfg).unwrap();
+        assert!(cfg_path.is_file());
+
+        let loaded = ConfigManager::load_from_path(&cfg_path);
+        assert_eq!(loaded.player_name, "AlexEngineer");
+        assert_eq!(loaded.max_memory_mb, 8192);
+        assert_eq!(loaded.window_width, 1920);
+        assert_eq!(loaded.window_height, 1080);
+        assert_eq!(loaded.theme_hue, 240);
+    }
+
+    #[test]
+    fn test_config_corrupted_fallback_to_defaults() {
+        let temp = TempTestDir::new("corrupted");
+        let cfg_path = temp.0.join("corrupted.json");
+
+        // 写入非法或损坏的 JSON
+        fs::write(&cfg_path, "{ broken json content !! ").unwrap();
+
+        let loaded = ConfigManager::load_from_path(&cfg_path);
+        assert_eq!(loaded.player_name, DEFAULT_PLAYER_NAME);
+        assert_eq!(loaded.max_memory_mb, DEFAULT_MAX_MEMORY_MB);
+        assert_eq!(loaded.window_width, DEFAULT_WINDOW_WIDTH);
+
+        // 写入空 game_dir 应该自动回退到平台默认目录
+        fs::write(&cfg_path, r#"{"game_dir": "   "}"#).unwrap();
+        let loaded_empty = ConfigManager::load_from_path(&cfg_path);
+        assert_eq!(
+            loaded_empty.game_dir,
+            platform::default_game_dir().to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn test_credentials_save_load_and_clear_roundtrip() {
+        let temp = TempTestDir::new("credentials");
+        let cred_path = temp.0.join("credentials.json");
+
+        let profile = UserProfile {
+            name: "ProPlayer".to_string(),
+            uuid: "12345678-1234-1234-1234-123456789abc".to_string(),
+            access_token: "secret_ms_token".to_string(),
+            avatar_url: "https://textures.minecraft.net/texture/pro".to_string(),
+            auth_type: "msa".to_string(),
+            auth_server: None,
+        };
+
+        // 保存凭据
+        ConfigManager::save_profile_to_path(&cred_path, Some(&profile)).unwrap();
+        assert!(cred_path.is_file());
+
+        // 读取凭据
+        let loaded = ConfigManager::load_profile_from_path(&cred_path).unwrap();
+        assert_eq!(loaded.name, "ProPlayer");
+        assert_eq!(loaded.uuid, "12345678-1234-1234-1234-123456789abc");
+        assert_eq!(loaded.access_token, "secret_ms_token");
+
+        // 清除凭据
+        ConfigManager::save_profile_to_path(&cred_path, None).unwrap();
+        assert!(!cred_path.exists());
+        assert!(ConfigManager::load_profile_from_path(&cred_path).is_none());
     }
 }

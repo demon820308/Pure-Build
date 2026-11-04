@@ -1,0 +1,41 @@
+{
+  "id": "fabric-loader-0.16.5-1.21.1",
+  "inheritsFrom": "1.21.1",
+  "mainClass": "net.fabricmc.loader.impl.launch.knot.KnotClient",
+  "arguments": {
+    "game": [],
+    "jvm": []
+  },
+  "libraries": [
+    {
+      "name": "net.fabricmc:fabric-loader:0.16.5",
+      "downloads": {
+        "artifact": {
+          "path": "net/fabricmc/fabric-loader/0.16.5/fabric-loader-0.16.5.jar",
+          "sha1": "aaaa1111aaaa1111aaaa1111aaaa1111aaaa1111",
+          "size": 500000
+        }
+      }
+    },
+    {
+      "name": "net.fabricmc:sponge-mixin:0.15.3+mixin.0.8.7",
+      "downloads": {
+        "artifact": {
+          "path": "net/fabricmc/sponge-mixin/0.15.3+mixin.0.8.7/sponge-mixin-0.15.3+mixin.0.8.7.jar",
+          "sha1": "aaaa2222aaaa2222aaaa2222aaaa2222aaaa2222",
+          "size": 1200000
+        }
+      }
+    },
+    {
+      "name": "org.ow2.asm:asm:9.7",
+      "downloads": {
+        "artifact": {
+          "path": "org/ow2/asm/asm/9.7/asm-9.7.jar",
+          "sha1": "aaaa3333aaaa3333aaaa3333aaaa3333aaaa3333",
+          "size": 125000
+        }
+      }
+    }
+  ]
+}

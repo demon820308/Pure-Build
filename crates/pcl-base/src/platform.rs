@@ -217,16 +217,18 @@ pub fn java_executable_name() -> &'static str {
     }
 }
 
-/// 当前平台的 Classpath 分隔符（由平台语义推导：Windows 为 `;`，Unix 为 `:`）
-pub fn classpath_separator() -> char {
-    #[cfg(target_os = "windows")]
-    {
+/// 根据目标 OS 名称推导 Classpath 分隔符（纯逻辑映射，用于跨平台测试与参数构造）
+pub fn classpath_separator_for_os(os: &str) -> char {
+    if os == "windows" {
         ';'
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
+    } else {
         ':'
     }
+}
+
+/// 当前平台的 Classpath 分隔符（由平台语义推导：Windows 为 `;`，Unix 为 `:`）
+pub fn classpath_separator() -> char {
+    classpath_separator_for_os(mc_os_name())
 }
 
 /// 本平台所有 Java 候选搜索目录

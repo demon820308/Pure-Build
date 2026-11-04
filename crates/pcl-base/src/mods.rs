@@ -184,3 +184,90 @@ impl ModScanner {
         mod_info
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+
+    struct TempTestDir(PathBuf);
+    impl TempTestDir {
+        fn new(name: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "pcl_mods_test_{}_{}",
+                name,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+    impl Drop for TempTestDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn test_mods_scan_toggle_and_delete_in_tempdir() {
+        let temp = TempTestDir::new("lifecycle");
+        let mods_dir = temp.0.join("mods");
+        fs::create_dir_all(&mods_dir).unwrap();
+
+        // 创建带 fabric.mod.json 的真实 jar 文件
+        let jar_path = mods_dir.join("sodium-0.5.8.jar");
+        let file = File::create(&jar_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        zip.start_file("fabric.mod.json", options).unwrap();
+        let fabric_json = r#"{
+            "schemaVersion": 1,
+            "id": "sodium",
+            "version": "0.5.8",
+            "name": "Sodium",
+            "description": "Modern rendering engine for Minecraft",
+            "authors": ["jellysquid3_"]
+        }"#;
+        zip.write_all(fabric_json.as_bytes()).unwrap();
+        zip.finish().unwrap();
+
+        // 1. 扫描启用状态
+        let scanned = ModScanner::scan_mods(&temp.0, &temp.0);
+        assert_eq!(scanned.len(), 1);
+        let m = &scanned[0];
+        assert_eq!(m.mod_id, "sodium");
+        assert_eq!(m.name, "Sodium");
+        assert_eq!(m.version, "0.5.8");
+        assert!(m.is_enabled);
+        assert_eq!(m.file_name, "sodium-0.5.8.jar");
+
+        // 2. 切换为禁用
+        let disabled_name = ModScanner::toggle_mod(&mods_dir, "sodium-0.5.8.jar").unwrap();
+        assert_eq!(disabled_name, "sodium-0.5.8.jar.disabled");
+        assert!(!mods_dir.join("sodium-0.5.8.jar").exists());
+        assert!(mods_dir.join("sodium-0.5.8.jar.disabled").exists());
+
+        let scanned2 = ModScanner::scan_mods(&temp.0, &temp.0);
+        assert_eq!(scanned2.len(), 1);
+        assert!(!scanned2[0].is_enabled);
+        assert_eq!(scanned2[0].mod_id, "sodium");
+
+        // 3. 再次切换恢复启用
+        let reenabled = ModScanner::toggle_mod(&mods_dir, "sodium-0.5.8.jar.disabled").unwrap();
+        assert_eq!(reenabled, "sodium-0.5.8.jar");
+        assert!(mods_dir.join("sodium-0.5.8.jar").exists());
+
+        // 4. 删除文件
+        ModScanner::delete_item(&mods_dir, "sodium-0.5.8.jar").unwrap();
+        assert!(!mods_dir.join("sodium-0.5.8.jar").exists());
+
+        let scanned3 = ModScanner::scan_mods(&temp.0, &temp.0);
+        assert_eq!(scanned3.len(), 0);
+    }
+}
