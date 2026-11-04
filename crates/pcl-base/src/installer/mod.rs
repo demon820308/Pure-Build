@@ -443,8 +443,7 @@ impl VersionInstaller {
 
         // 5. 可选：自动合成加载器 (Fabric / Quilt / Forge / NeoForge / OptiFine) (85% ~ 98%)
         match loader_type.as_deref() {
-            Some("fabric") | Some("quilt") => {
-                let l_type = loader_type.as_deref().unwrap();
+            Some(l_type @ ("fabric" | "quilt")) => {
                 merge::install_fabric_or_quilt_loader(
                     &reporter,
                     client,
@@ -461,8 +460,7 @@ impl VersionInstaller {
                 )
                 .await?;
             }
-            Some("forge") | Some("neoforge") => {
-                let l_type = loader_type.as_deref().unwrap();
+            Some(l_type @ ("forge" | "neoforge")) => {
                 forge::install_forge_or_neoforge_loader(
                     &reporter,
                     client,
