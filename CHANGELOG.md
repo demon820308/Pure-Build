@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/) 语义化版本规范。
 
+## [v0.1.6] - 2026-11-04
+
+### 架构与组件化重构
+- **LaunchView 架构模块化**：将主启动视图从 824 行巨石单文件重构为清晰内聚的子组件与 composable（`LaunchView.vue` 收敛至 68 行，下辖 `VersionPicker`、`JavaSelectPanel`、`LaunchClassicLayout`、`LaunchModernLayout` 与 `useLaunch`），各独立模块代码行数严格控制在 350 行以内。
+- **状态单一事实源与双布局解耦**：彻底分家 PCL 经典布局与现代网格布局，消除两套视图间的模板冗余与状态污染，确保原版 PCL 像素级一致性。
+- **启动生命周期与异常强杀治理**：通过 `useLaunch` composable 集中收敛后端启动进度监听、正常/异常退出处理与进程超时强制终止逻辑。
+
 ## [v0.1.5] - 2026-11-04
 
 ### 界面与体验修复
