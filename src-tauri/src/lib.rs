@@ -1,10 +1,11 @@
 use pcl_base::{
     platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager, CrashAnalysisResult,
     DeviceCodeResponse, DownloadManager, DownloadProgress, EndpointPingResult, FabricMetaSummary,
-    JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager, LoaderVersionItem,
-    MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager, ModrinthProject,
-    MusicTrack, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle, ResourceItem,
-    ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller, VersionScanner,
+    JavaDownloader, JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager,
+    LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager,
+    ModrinthProject, MusicTrack, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle,
+    ResourceItem, ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller,
+    VersionScanner,
 };
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -313,7 +314,7 @@ fn save_user_profile(profile: Option<UserProfile>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn launch_minecraft(
+async fn launch_minecraft(
     app: AppHandle,
     game_dir: String,
     version_id: String,
@@ -333,6 +334,25 @@ fn launch_minecraft(
         uuid.as_deref(),
         access_token.as_deref(),
     )
+    .await
+}
+
+#[tauri::command]
+async fn ensure_java_version(
+    app: AppHandle,
+    game_dir: String,
+    candidate_path: String,
+    major_version: u32,
+) -> Result<String, String> {
+    let reporter = make_reporter(app);
+    let path = JavaDownloader::ensure_java_for_version(
+        &reporter,
+        std::path::Path::new(&game_dir),
+        &candidate_path,
+        major_version,
+    )
+    .await?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -476,6 +496,7 @@ pub fn run() {
             load_user_profile,
             save_user_profile,
             launch_minecraft,
+            ensure_java_version,
             kill_game_process,
             scan_lan_rooms,
             broadcast_lan_room,

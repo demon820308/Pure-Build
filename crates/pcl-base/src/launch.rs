@@ -21,6 +21,13 @@ pub struct LaunchProgress {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LaunchJavaVersion {
+    pub component: Option<String>,
+    #[serde(rename = "majorVersion")]
+    pub major_version: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LaunchVersionJson {
     pub id: String,
     #[serde(rename = "mainClass")]
@@ -34,6 +41,8 @@ pub struct LaunchVersionJson {
     #[serde(rename = "assetIndex")]
     pub asset_index: Option<LaunchAssetIndex>,
     pub assets: Option<String>,
+    #[serde(rename = "javaVersion")]
+    pub java_version: Option<LaunchJavaVersion>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -103,7 +112,7 @@ pub struct MinecraftLauncher;
 
 impl MinecraftLauncher {
     /// 执行拉起游戏进程 (带正版/离线身份，解压当前平台 natives，并异步监控崩溃日志)
-    pub fn launch_with_auth(
+    pub async fn launch_with_auth(
         reporter: ReporterHandle,
         game_dir_str: &str,
         version_id: &str,
@@ -137,6 +146,35 @@ impl MinecraftLauncher {
         }
 
         let ver_json = Self::load_version_json_with_inheritance(game_dir, &version_dir, version_id)?;
+
+        let required_major = ver_json
+            .java_version
+            .as_ref()
+            .and_then(|j| j.major_version)
+            .unwrap_or(8);
+
+        emit_progress(
+            &format!("正在校验 Java 环境 (目标主版本: Java {})...", required_major),
+            20.0,
+            None,
+            false,
+            None,
+        );
+
+        let effective_java_buf = crate::java::JavaDownloader::ensure_java_for_version(
+            &reporter,
+            game_dir,
+            java_path_str,
+            required_major,
+        )
+        .await
+        .map_err(|e| {
+            let err_msg = format!("Java 校验或自动下载失败: {}", e);
+            emit_progress("启动失败", 0.0, None, true, Some(err_msg.clone()));
+            err_msg
+        })?;
+
+        let effective_java_str = effective_java_buf.to_string_lossy().to_string();
 
         let target_os = platform::mc_os_name();
         let target_arch = platform::mc_os_arch();
@@ -351,7 +389,7 @@ impl MinecraftLauncher {
         // 5. 启动实际进程
         emit_progress("正在合成启动参数并唤醒 Java 进程...", 85.0, None, false, None);
 
-        let mut cmd = Command::new(java_path_str);
+        let mut cmd = Command::new(&effective_java_str);
         cmd.current_dir(&effective_game_dir);
         cmd.args(&jvm_args);
         cmd.arg(&ver_json.main_class);
@@ -482,6 +520,9 @@ impl MinecraftLauncher {
         }
         if child.minecraft_arguments.is_some() {
             parent.minecraft_arguments = child.minecraft_arguments;
+        }
+        if child.java_version.is_some() {
+            parent.java_version = child.java_version;
         }
 
         // 子版本的 libraries 追加在后，以便在 get_package_key 去重时覆盖父版本的同名旧版库（如 ASM）

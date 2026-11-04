@@ -81,7 +81,11 @@ const scanJavaRuntime = async () => {
   try {
     const javas = await backend.getInstalledJava()
     javaList.value = javas
-    if (javas.length > 0 && !selectedJava.value) {
+    const reqMajor = store.currentVersion?.java_version || 8
+    const matched = javas.find((j) => j.major_version === reqMajor)
+    if (matched) {
+      selectedJava.value = matched
+    } else if (javas.length > 0 && !selectedJava.value) {
       selectedJava.value = javas[0]
     }
   } finally {
@@ -229,11 +233,6 @@ const handleLaunch = async () => {
   )
   if (!versionExists) return
 
-  if (!selectedJava.value) {
-    alert('未检测到可用的 Java 运行时！')
-    return
-  }
-
   isLaunching.value = true
   showLaunchMessage(null)
   launchProgress.value = {
@@ -246,7 +245,7 @@ const handleLaunch = async () => {
     const res = await backend.launchMinecraft({
       gameDir: store.gameDir,
       versionId: store.currentVersion.id,
-      javaPath: selectedJava.value.path,
+      javaPath: selectedJava.value?.path || '',
       playerName: store.playerName || 'Steve',
       maxMemoryMb: store.maxMemoryMb,
       uuid: store.userProfile?.uuid,

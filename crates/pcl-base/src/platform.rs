@@ -75,6 +75,38 @@ pub fn mc_os_arch() -> &'static str {
     map_mc_os_arch(env::consts::ARCH)
 }
 
+/// 将系统/Mojang OS 标识映射为 Adoptium API 的 `os` 取值（纯函数，入参注入便于跨平台测试）
+/// Windows -> `windows`, macOS/osx -> `mac`, Linux -> `linux`
+pub fn map_adoptium_os_name(raw_os: &str) -> &'static str {
+    match raw_os {
+        "windows" => "windows",
+        "macos" | "osx" => "mac",
+        "linux" => "linux",
+        _ => "linux",
+    }
+}
+
+/// 当前平台的 Adoptium API `os` 取值
+pub fn adoptium_os_name() -> &'static str {
+    map_adoptium_os_name(mc_os_name())
+}
+
+/// 将系统/Mojang 架构标识映射为 Adoptium API 的 `architecture` 取值（纯函数，入参注入便于跨平台测试）
+/// x64/x86_64 -> `x64`, aarch64/arm64 -> `aarch64`, x86/i386 -> `x32`
+pub fn map_adoptium_arch_name(raw_arch: &str) -> &'static str {
+    match raw_arch {
+        "aarch64" | "arm64" => "aarch64",
+        "x86_64" | "amd64" | "x64" => "x64",
+        "x86" | "i686" | "i386" => "x32",
+        _ => "x64",
+    }
+}
+
+/// 当前平台的 Adoptium API `architecture` 取值
+pub fn adoptium_arch_name() -> &'static str {
+    map_adoptium_arch_name(mc_os_arch())
+}
+
 /// 判断当前是否为 macOS 平台
 pub fn is_macos() -> bool {
     mc_os_name() == "osx"
@@ -522,6 +554,22 @@ pub fn server_script_with_memory(
     Ok(script_name.to_string())
 }
 
+/// 设置指定文件为可执行权限（Unix 平台设置 0o755，Windows 平台无操作）
+pub fn make_executable(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = fs::Permissions::from_mode(0o755);
+        fs::set_permissions(path, perms)
+            .map_err(|e| format!("设置可执行权限 (0o755) 失败: {}", e))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
 /// 为凭据文件设置仅当前用户可读写权限（Unix 下 `0o600`）
 pub fn restrict_credentials_permissions(path: &Path) {
     #[cfg(unix)]
@@ -590,6 +638,14 @@ mod tests {
         assert_eq!(map_mc_os_arch("aarch64"), "arm64");
         assert_eq!(map_mc_os_arch("x86_64"), "x64");
         assert_eq!(map_mc_os_arch("x86"), "x86");
+
+        assert_eq!(map_adoptium_os_name("windows"), "windows");
+        assert_eq!(map_adoptium_os_name("osx"), "mac");
+        assert_eq!(map_adoptium_os_name("linux"), "linux");
+
+        assert_eq!(map_adoptium_arch_name("arm64"), "aarch64");
+        assert_eq!(map_adoptium_arch_name("x64"), "x64");
+        assert_eq!(map_adoptium_arch_name("x86"), "x32");
     }
 
     #[test]

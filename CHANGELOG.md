@@ -1,0 +1,55 @@
+# 更新日志 (Changelog)
+
+本项目遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/) 语义化版本规范。
+
+## [v0.1.4] - 2026-11-04
+
+### 新增与优化
+- **Java 版本智能校验与自动配齐**：
+  - 读取 Minecraft 版本 JSON（含 `inheritsFrom` 继承链）所声明的 `javaVersion`（Java 8 / 17 / 21）；
+  - 启动前自动比对本机 Java 候选清单，未安装对应大版本时自动从 Adoptium 官方 API 下载对应平台（Windows/macOS/Linux, x64/arm64）的 Eclipse Temurin JRE 并安全解压复用；
+  - 解压阶段实施严密的路径规范化检查，杜绝 zip-slip 目录逃逸漏洞。
+- **启动性能打点与秒开优化**：
+  - 前后端全链路打点（Rust `T0_EPOCH` -> `T0_SETUP` -> Webview 首帧 -> DOM 就绪 -> 首屏数据装载完成）；
+  - 达成并实测保持在冷启动中位数约 1278ms、热启动中位数约 732ms（均优于 1.5s 预期指标）。
+- **分发与打包架构规范**：
+  - 弃用免安装绿色包 (Portable)，全面收敛为标准化 Setup 安装器 (NSIS / MSI / DMG)，彻底规避 WebView2 引导程序丢失与 VC++ CRT 运行时依赖隐患；
+  - 补齐 Windows Authenticode 签名与 macOS Notarization 公证指南及未签名测试阶段 Gatekeeper 解除说明。
+
+## [v0.1.3] - 2026-11-03
+
+### 重构与平台支持
+- **平台层解耦与反写死治理**：
+  - 确立 `platform.rs` 唯一平台适配层，全仓清除硬编码平台字面量与魔法路径，所有操作系统与架构判定均由运行时动态推导并支持参数注入测试；
+  - 补齐 Mojang 官方规范级启动规则（rules）与分类器（classifiers）匹配逻辑，支持 macOS（含 Apple Silicon `arm64` 与 Intel `x64`）以及 Linux 平台；
+  - 修复 macOS 环境下 natives 动态库解压与 `-Djava.library.path` 缺失导致 GLFW 无法初始化的致命缺陷；旧版本（1.12.2 及以前）自动追加 `-XstartOnFirstThread` 参数。
+- **下载源架构解耦**：
+  - 集中收敛全仓下载源与镜像常量至 `endpoints.rs`，统一配置 BMCLAPI 与 MCIMirror 镜像路由策略。
+
+## [v0.1.2] - 2026-10-31
+
+### 新增功能
+- **整合包与生态资源管理**：
+  - 支持 Modrinth `.mrpack` 整合包一键导入，并发多源下载并自动解压配置与覆盖文件；
+  - 支持导出当前游戏实例为标准化 `.mrpack` 包，自动生成 modlist 与依赖索引。
+- **崩溃智能分析系统**：
+  - 游戏异常退出时自动捕获日志末尾 100 行流式上下文，支持识别内存溢出 (OOM)、Mod 兼容冲突、驱动崩溃及字节码版本不匹配并给出针对性修复建议。
+- **资源与存档管理**：
+  - 扫描并呈现游戏内存档（Saves）、材质包、光影包与背景音乐，支持直接操作与文件目录快速定位。
+
+## [v0.1.1] - 2026-10-25
+
+### 新增与修复
+- **版本安装器重构**：
+  - 支持原版 Minecraft、Fabric Loader、Forge Loader、NeoForge 与 OptiFine 的自动探测、依赖拉取与版本元数据深度合并；
+  - 支持并发下载与文件完整性校验（SHA1 / SHA256 / SHA512），下载中断自动断点重试与损坏文件自愈。
+- **局域网联机协作**：
+  - 基于 UDP 组播协议的局域网房间广播与自动发现，支持生成并解析联机邀请码。
+
+## [v0.1.0] - 2026-10-18
+
+### 初始发布
+- **核心启动框架搭建**：
+  - 采用 Tauri 2 + Vue 3 + TypeScript + Tailwind CSS 构建现代化浅色扁平 UI；
+  - 底层基于 Rust `pcl-base` 模块，支持离线登入与微软 OAuth2 Device Code 授权正版登录；
+  - 本地 Minecraft 目录扫描、版本列表展示与自定义 JVM 参数配置。

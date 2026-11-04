@@ -21,7 +21,7 @@ pub use config::{AppConfig, ConfigManager};
 pub use crash::{CrashAnalysisResult, CrashAnalyzer};
 pub use download::{DownloadManager, FabricMetaSummary, LoaderVersionItem, RemoteVersion};
 pub use installer::{DownloadProgress, VersionInstaller};
-pub use java::{JavaInfo, JavaScanner};
+pub use java::{JavaDownloader, JavaInfo, JavaScanner};
 pub use launch::{LaunchProgress, MinecraftLauncher};
 pub use link::{CacheCleanResult, EndpointPingResult, LanRoomInfo, LinkManager};
 pub use modpack::{ModpackIndex, ModpackManager};

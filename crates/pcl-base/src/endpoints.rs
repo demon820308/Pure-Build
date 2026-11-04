@@ -139,6 +139,17 @@ pub const MCIMIRROR_CDN_ROOT: &str = "https://mod.mcimirror.top";
 pub const LAUNCHER_USER_AGENT: &str = "PCL2/2.11.2.50 (PlainCraftLauncher/2.0)";
 pub const LAUNCHER_REFERER: &str = "http://408.open.pcl2.server/";
 
+/// Adoptium / Temurin JRE 官方 API 根端点
+pub const ADOPTIUM_API_BASE: &str = "https://api.adoptium.net/v3";
+
+/// 返回指定主版本、平台与架构的 Adoptium 最新 GA JRE 资产元数据查询 URL
+pub fn adoptium_assets_url(major: u32, os: &str, arch: &str) -> String {
+    format!(
+        "{}/assets/latest/{}/hotspot?architecture={}&image_type=jre&os={}&vendor=eclipse",
+        ADOPTIUM_API_BASE, major, arch, os
+    )
+}
+
 // 4. 多源 URL 组装与故障转移辅助函数
 
 /// 返回版本清单候选 URL 列表（根据是否启用镜像源决定优先级，官方源与镜像源互为备份）

@@ -37,6 +37,7 @@ export interface VersionInfo {
   main_class?: string
   has_indie: boolean
   path: string
+  java_version?: number
 }
 
 export interface ModInfo {
@@ -538,6 +539,18 @@ export const backend = {
       maxMemoryMb: params.maxMemoryMb,
       uuid: params.uuid,
       accessToken: params.accessToken,
+    })
+  },
+
+  async ensureJavaVersion(params: {
+    gameDir: string
+    candidatePath: string
+    majorVersion: number
+  }): Promise<string> {
+    return await invoke<string>('ensure_java_version', {
+      gameDir: params.gameDir,
+      candidatePath: params.candidatePath,
+      majorVersion: params.majorVersion,
     })
   },
 
