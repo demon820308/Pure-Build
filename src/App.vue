@@ -1,13 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
-import { open } from '@tauri-apps/plugin-dialog'
+import { defineAsyncComponent, onMounted, onUnmounted, ref } from 'vue'
 import LaunchView from '@/views/LaunchView.vue'
 import CrashDialog from '@/components/CrashDialog.vue'
 import PclIcon from '@/components/base/PclIcon.vue'
+import MusicPlayerBar from '@/components/music/MusicPlayerBar.vue'
 import { backend } from '@/services/backend'
 import type { CrashAnalysisResult } from '@/services/backend'
 import { useAppStore } from '@/stores/app'
-import { EQ_PRESETS } from '@/services/audioEngine'
 
 // 非首屏视图按需懒加载，大幅缩减首包解析体积（消除白屏 RC3）
 const InstanceView = defineAsyncComponent(() => import('@/views/InstanceView.vue'))
@@ -17,6 +16,7 @@ const LinkView = defineAsyncComponent(() => import('@/views/LinkView.vue'))
 const OtherView = defineAsyncComponent(() => import('@/views/OtherView.vue'))
 
 const store = useAppStore()
+const musicPlayerRef = ref<InstanceType<typeof MusicPlayerBar> | null>(null)
 const crashReport = ref<CrashAnalysisResult | null>(null)
 let unlistenCrash: (() => void) | null = null
 let unlistenLaunchBgm: (() => void) | null = null
@@ -24,94 +24,6 @@ let unlistenExitBgm: (() => void) | null = null
 let unlistenDownloadTask: (() => void) | null = null
 const handleWindowFocus = () => {
   void store.reconcileOnFocus()
-}
-
-const showMusicPopover = ref(false)
-const musicSearchQuery = ref('')
-
-watch(() => store.currentTab, () => {
-  showMusicPopover.value = false
-})
-
-const filteredMusicTracks = computed(() => {
-  const q = musicSearchQuery.value.trim().toLowerCase()
-  if (!q) return store.musicTracks
-  return store.musicTracks.filter(
-    (t) => t.name.toLowerCase().includes(q) || t.folder_path.toLowerCase().includes(q)
-  )
-})
-
-const playModeMeta = computed(() => {
-  switch (store.musicPlayMode) {
-    case 'shuffle':
-      return { icon: '🔀', label: '随机循环' }
-    case 'list':
-      return { icon: '🔁', label: '列表循环' }
-    case 'single':
-      return { icon: '🔂', label: '单曲循环' }
-  }
-})
-
-const currentEqMeta = computed(() => {
-  return EQ_PRESETS.find((p) => p.id === store.musicEqPreset) || EQ_PRESETS[0]
-})
-
-const cycleEqPreset = () => {
-  const order = ['flat', 'bass_boost', 'ambient', 'vocal', 'warm']
-  const idx = order.indexOf(store.musicEqPreset)
-  const next = order[(idx + 1) % order.length]
-  store.setMusicEqPreset(next)
-}
-
-const formatDuration = (sec: number): string => {
-  if (!sec || !Number.isFinite(sec) || sec < 0) return '00:00'
-  const total = Math.floor(sec)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-const folderBaseName = (folderPath: string): string => {
-  const cleaned = folderPath.replace(/[\\/]+$/, '')
-  const parts = cleaned.split(/[\\/]/)
-  return parts[parts.length - 1] || folderPath
-}
-
-const handleAddMusicFolder = async () => {
-  try {
-    const selected = await open({
-      directory: true,
-      multiple: true,
-      title: '选择要添加的背景音乐文件夹（自动扫描子文件夹）',
-    })
-    if (!selected) return
-    if (Array.isArray(selected)) {
-      for (const dir of selected) {
-        if (typeof dir === 'string') {
-          await store.addMusicFolder(dir)
-        }
-      }
-    } else if (typeof selected === 'string') {
-      await store.addMusicFolder(selected)
-    }
-  } catch (e) {
-    console.warn('选择音乐文件夹失败:', e)
-  }
-}
-
-const handleMusicBallRightClick = async () => {
-  if (store.musicTracks.length === 0) {
-    showMusicPopover.value = true
-    return
-  }
-  await store.playNextTrack()
-}
-
-const handleOpenDefaultMusicDir = async () => {
-  const dir = store.platformInfo?.default_music_dir
-  if (dir) {
-    await backend.openFolder(dir)
-  }
 }
 
 // 捕获阶段拦截顶栏双击 (e.detail >= 2)，在 Tauri drag.js 监听前阻断双击最大化请求
@@ -381,7 +293,7 @@ const classicNavItems: Array<{
         <button
           class="mt-auto w-12 h-12 rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all duration-300 ease-[var(--pcl-ease-bounce)] active:scale-95 group"
           :class="[
-            showMusicPopover
+            musicPlayerRef?.showMusicPopover
               ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/30 scale-105'
               : 'bg-pcl-card border border-pcl-border text-pcl-primary shadow-pcl-card hover:border-pcl-primary/60 hover:bg-pcl-primary/10 hover:scale-105'
           ]"
@@ -390,15 +302,15 @@ const classicNavItems: Array<{
               ? `${store.isMusicPlaying ? '正在播放' : '已暂停'}：${store.currentTrack.name}\n左键打开迷你播放列表，右键切下一首`
               : '左键打开音乐播放列表 / 添加文件夹，右键切下一首'
           "
-          @click="showMusicPopover = !showMusicPopover"
-          @contextmenu.prevent="handleMusicBallRightClick"
+          @click="musicPlayerRef && (musicPlayerRef.showMusicPopover = !musicPlayerRef.showMusicPopover)"
+          @contextmenu.prevent="musicPlayerRef?.handleMusicBallRightClick()"
         >
           <div
             class="absolute bottom-1 left-2 right-2 h-1 rounded-full bg-black/20 dark:bg-white/20 overflow-hidden pointer-events-none"
           >
             <div
               class="h-full transition-all duration-200"
-              :class="showMusicPopover ? 'bg-white' : 'bg-pcl-primary'"
+              :class="musicPlayerRef?.showMusicPopover ? 'bg-white' : 'bg-pcl-primary'"
               :style="{ width: `${store.musicProgress}%` }"
             />
           </div>
@@ -408,7 +320,7 @@ const classicNavItems: Array<{
           </span>
           <span
             class="text-[10px] scale-85 leading-none transition-colors"
-            :class="showMusicPopover ? 'text-white font-medium' : 'text-pcl-subtext group-hover:text-pcl-primary'"
+            :class="musicPlayerRef?.showMusicPopover ? 'text-white font-medium' : 'text-pcl-subtext group-hover:text-pcl-primary'"
           >
             音乐
           </span>
@@ -430,332 +342,7 @@ const classicNavItems: Array<{
       </main>
     </div>
 
-    <div
-      v-if="showMusicPopover"
-      class="fixed inset-0 z-30"
-      @click="showMusicPopover = false"
-    />
-
-    <Transition name="fade-slide">
-      <div
-        v-if="showMusicPopover"
-        class="fixed z-40 text-xs flex flex-col gap-3 transition-colors"
-        :class="
-          store.uiStyle === 'classic'
-            ? 'right-5 bottom-[74px] w-[330px] rounded-[6px] bg-white/98 border border-[var(--pcl-brush-5)] shadow-[0_6px_22px_rgba(19,112,243,0.18)] p-3.5 text-[#343d4a]'
-            : 'left-[80px] bottom-3.5 w-[340px] rounded-2xl bg-pcl-card border border-pcl-border shadow-pcl-window p-4 text-pcl-text backdrop-blur-xl'
-        "
-      >
-          <div class="flex items-start justify-between gap-2">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5">
-                <span class="text-sm">{{ store.isMusicPlaying ? '🎵' : '⏸️' }}</span>
-                <span
-                  class="font-bold truncate text-[13px]"
-                  :class="store.uiStyle === 'classic' ? 'text-[var(--pcl-brush-1)]' : 'text-pcl-text'"
-                  :title="store.currentTrack?.name"
-                >
-                  {{ store.currentTrack?.name || '暂无播放中的音乐' }}
-                </span>
-              </div>
-              <div
-                class="text-[11px] mt-0.5 flex items-center gap-2"
-                :class="store.uiStyle === 'classic' ? 'text-[#737373]' : 'text-pcl-subtext'"
-              >
-                <span>{{ formatDuration(store.musicCurrentTime) }} / {{ formatDuration(store.musicDuration) }}</span>
-                <span>·</span>
-                <span>共 {{ store.musicTracks.length }} 首</span>
-              </div>
-            </div>
-            <button
-              class="w-6 h-6 flex items-center justify-center cursor-pointer transition-colors"
-              :class="
-                store.uiStyle === 'classic'
-                  ? 'rounded-[4px] text-[#737373] hover:bg-[var(--pcl-brush-7)] hover:text-[var(--pcl-brush-2)]'
-                  : 'rounded-lg text-pcl-subtext hover:bg-white/10 hover:text-pcl-text'
-              "
-              title="收起播放面板"
-              @click="showMusicPopover = false"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div class="flex items-center gap-2">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              step="0.5"
-              :value="store.musicProgress"
-              :disabled="!store.currentTrack"
-              class="w-full accent-[var(--pcl-color-primary)] cursor-pointer h-1.5 rounded-lg"
-              :class="store.uiStyle === 'classic' ? 'bg-[var(--pcl-brush-6)]' : 'bg-black/20'"
-              @input="(e) => store.seekMusic(Number((e.target as HTMLInputElement).value))"
-            />
-          </div>
-
-          <div class="flex items-center justify-between gap-1.5">
-            <div class="flex items-center gap-1 shrink-0">
-              <button
-                class="px-2 py-1 text-[11px] flex items-center gap-1 cursor-pointer transition-all"
-                :class="
-                  store.uiStyle === 'classic'
-                    ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                    : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/60 hover:text-pcl-primary'
-                "
-                :title="`循环模式：${playModeMeta.label}（点击切换）`"
-                @click="store.cycleMusicPlayMode()"
-              >
-                <span>{{ playModeMeta.icon }}</span>
-              </button>
-
-              <button
-                class="px-2 py-1 text-[11px] flex items-center cursor-pointer transition-all"
-                :class="
-                  store.uiStyle === 'classic'
-                    ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                    : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/60 hover:text-pcl-primary'
-                "
-                :title="`调音音效：${currentEqMeta.name}（${currentEqMeta.desc}，点击快速切换预设）`"
-                @click="cycleEqPreset()"
-              >
-                <span class="text-[10px] font-medium">{{ currentEqMeta.name }}</span>
-              </button>
-            </div>
-
-            <div class="flex items-center gap-1">
-              <button
-                class="w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
-                :class="
-                  store.uiStyle === 'classic'
-                    ? 'rounded-[4px] text-[#343d4a] hover:bg-[var(--pcl-brush-7)] hover:text-[var(--pcl-brush-2)]'
-                    : 'rounded-lg text-pcl-text hover:bg-white/10 hover:text-pcl-primary'
-                "
-                title="上一曲"
-                @click="store.playPrevTrack()"
-              >
-                ⏮
-              </button>
-              <button
-                class="w-8 h-8 flex items-center justify-center cursor-pointer transition-all active:scale-95"
-                :class="
-                  store.uiStyle === 'classic'
-                    ? 'rounded-full border border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-3)] hover:bg-[var(--pcl-brush-2)] text-white shadow-sm'
-                    : 'rounded-xl bg-pcl-primary hover:bg-pcl-hover text-white shadow-md shadow-pcl-primary/25'
-                "
-                :title="store.isMusicPlaying ? '暂停' : '播放'"
-                @click="store.toggleMusicPlay()"
-              >
-                {{ store.isMusicPlaying ? '⏸' : '▶' }}
-              </button>
-              <button
-                class="w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
-                :class="
-                  store.uiStyle === 'classic'
-                    ? 'rounded-[4px] text-[#343d4a] hover:bg-[var(--pcl-brush-7)] hover:text-[var(--pcl-brush-2)]'
-                    : 'rounded-lg text-pcl-text hover:bg-white/10 hover:text-pcl-primary'
-                "
-                title="下一曲（也可直接右键音乐按钮）"
-                @click="store.playNextTrack()"
-              >
-                ⏭
-              </button>
-            </div>
-
-            <div class="flex items-center gap-1 flex-1 min-w-0 max-w-[120px]" :title="`音量: ${store.musicVolume}%`">
-              <span class="text-[11px]">{{ store.musicVolume === 0 ? '🔇' : '🔊' }}</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                :value="store.musicVolume"
-                class="w-full min-w-0 accent-[var(--pcl-color-primary)] cursor-pointer h-1"
-                @input="(e) => store.setMusicVolume(Number((e.target as HTMLInputElement).value))"
-              />
-            </div>
-          </div>
-
-          <div
-            class="flex items-center justify-between gap-1.5 pt-2 border-t"
-            :class="store.uiStyle === 'classic' ? 'border-black/8' : 'border-pcl-border'"
-          >
-            <button
-              class="flex-1 py-1.5 px-2.5 font-semibold flex items-center justify-center gap-1 cursor-pointer transition-all"
-              :class="
-                store.uiStyle === 'classic'
-                  ? 'rounded-[4px] border border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-8)] text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-6)]'
-                  : 'rounded-xl bg-pcl-primary hover:bg-pcl-hover text-white shadow-sm'
-              "
-              title="添加本地音乐文件夹（自动递归扫描子文件夹）"
-              @click="handleAddMusicFolder"
-            >
-              <span>➕</span>
-              <span>添加文件夹</span>
-            </button>
-            <button
-              class="py-1.5 px-2.5 flex items-center gap-1 cursor-pointer transition-all"
-              :class="
-                store.uiStyle === 'classic'
-                  ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                  : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/50 hover:text-pcl-primary'
-              "
-              title="打开默认 Musics 音乐文件夹"
-              @click="handleOpenDefaultMusicDir"
-            >
-              <span>📂</span>
-              <span>默认库</span>
-            </button>
-            <button
-              class="py-1.5 px-2.5 flex items-center gap-1 cursor-pointer transition-all"
-              :class="
-                store.uiStyle === 'classic'
-                  ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                  : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/50 hover:text-pcl-primary'
-              "
-              title="重新扫描所有音乐文件夹"
-              @click="store.refreshMusicPlaylist(false)"
-            >
-              <span>🔄</span>
-            </button>
-          </div>
-
-          <div v-if="store.musicDirs.length > 0" class="flex flex-wrap gap-1.5 max-h-[54px] overflow-y-auto">
-            <div
-              v-for="dir in store.musicDirs"
-              :key="dir"
-              class="inline-flex items-center gap-1 px-2 py-0.5 text-[10.5px] max-w-full transition-colors"
-              :class="
-                store.uiStyle === 'classic'
-                  ? 'rounded-[3px] bg-[var(--pcl-brush-8)] border border-[var(--pcl-brush-5)] text-[var(--pcl-brush-2)]'
-                  : 'rounded-lg bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary'
-              "
-              :title="dir"
-            >
-              <span
-                class="truncate max-w-[210px] cursor-pointer hover:underline"
-                @click="backend.openFolder(dir)"
-              >
-                📁 {{ folderBaseName(dir) }}
-              </span>
-              <button
-                class="hover:text-red-500 cursor-pointer ml-0.5 font-bold"
-                title="移除此音乐文件夹"
-                @click="store.removeMusicFolder(dir)"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-
-          <div v-if="store.musicTracks.length > 5">
-            <input
-              v-model="musicSearchQuery"
-              placeholder="搜索歌名或所在目录..."
-              class="w-full px-2.5 py-1.5 text-[11px] outline-none transition-colors"
-              :class="
-                store.uiStyle === 'classic'
-                  ? 'rounded-[4px] bg-white border border-black/20 text-[#343d4a] placeholder:text-[#8c8c8c] focus:border-[var(--pcl-brush-3)]'
-                  : 'rounded-xl bg-[var(--pcl-color-bg)] border border-pcl-border text-pcl-text placeholder:text-pcl-subtext focus:border-pcl-primary'
-              "
-            />
-          </div>
-
-          <div class="max-h-[180px] overflow-y-auto space-y-1 pr-0.5">
-            <div
-              v-if="filteredMusicTracks.length === 0"
-              class="py-6 text-center text-[11px]"
-              :class="store.uiStyle === 'classic' ? 'text-[#737373]' : 'text-pcl-subtext'"
-            >
-              {{
-                store.musicTracks.length === 0
-                  ? '暂无音乐，点击上方「➕ 添加文件夹」导入音乐库'
-                  : '未找到匹配的曲目'
-              }}
-            </div>
-            <div
-              v-for="track in filteredMusicTracks"
-              :key="track.path"
-              class="px-2.5 py-1.5 flex items-center justify-between gap-2 cursor-pointer transition-colors"
-              :class="
-                store.uiStyle === 'classic'
-                  ? store.currentTrack?.path === track.path
-                    ? 'rounded-[4px] bg-[var(--pcl-brush-6)] text-[var(--pcl-brush-2)] font-semibold'
-                    : 'rounded-[4px] text-[#343d4a] hover:bg-[var(--pcl-brush-7)]'
-                  : store.currentTrack?.path === track.path
-                    ? 'rounded-xl bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary font-semibold'
-                    : 'rounded-xl border border-transparent text-pcl-text hover:bg-white/5'
-              "
-              :title="track.path"
-              @click="store.playTrack(track, true)"
-            >
-              <div class="flex items-center gap-1.5 min-w-0 flex-1">
-                <span class="text-[11px] shrink-0">
-                  {{
-                    store.currentTrack?.path === track.path
-                      ? store.isMusicPlaying
-                        ? '🔊'
-                        : '⏸'
-                      : '♪'
-                  }}
-                </span>
-                <span class="truncate text-[11.5px]">{{ track.name }}</span>
-              </div>
-              <span
-                class="text-[10px] shrink-0"
-                :class="store.uiStyle === 'classic' ? 'text-[#737373]' : 'text-pcl-subtext'"
-              >
-                {{ track.size_mb.toFixed(1) }} MB
-              </span>
-            </div>
-          </div>
-        </div>
-      </Transition>
-
-    <div
-      v-if="store.uiStyle === 'classic'"
-      class="fixed z-30 right-5 bottom-5 pointer-events-auto"
-    >
-      <button
-        class="relative transition-all flex items-center justify-center cursor-pointer active:scale-95 w-11 h-11 rounded-full bg-[var(--pcl-brush-3)] text-white shadow-lg hover:bg-[var(--pcl-brush-2)] hover:scale-105"
-        :title="
-          store.currentTrack
-            ? `${store.isMusicPlaying ? '正在播放' : '已暂停'}：${store.currentTrack.name}\n左键打开迷你播放列表，右键切下一首`
-            : '左键打开音乐播放列表 / 添加文件夹，右键切下一首'
-        "
-        @click="showMusicPopover = !showMusicPopover"
-        @contextmenu.prevent="handleMusicBallRightClick"
-      >
-        <svg
-          class="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
-          viewBox="0 0 44 44"
-        >
-          <circle
-            cx="22"
-            cy="22"
-            r="19.5"
-            fill="none"
-            stroke="rgba(255,255,255,0.22)"
-            stroke-width="2.2"
-          />
-          <circle
-            cx="22"
-            cy="22"
-            r="19.5"
-            fill="none"
-            stroke="#ffffff"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            :stroke-dasharray="122.5"
-            :stroke-dashoffset="122.5 - (122.5 * store.musicProgress) / 100"
-          />
-        </svg>
-
-        <span class="text-sm relative z-10" :class="store.isMusicPlaying ? 'animate-pulse' : ''">
-          {{ store.isMusicPlaying ? '🎵' : '🎶' }}
-        </span>
-      </button>
-    </div>
+    <MusicPlayerBar ref="musicPlayerRef" />
 
     <Transition name="fade-slide">
       <div
