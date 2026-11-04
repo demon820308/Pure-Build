@@ -4,6 +4,7 @@ pub mod libraries;
 pub mod merge;
 pub mod optifine;
 pub mod server;
+pub mod verify;
 
 use crate::config::ConfigManager;
 use crate::endpoints::{
