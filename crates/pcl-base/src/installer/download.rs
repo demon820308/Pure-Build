@@ -2,7 +2,7 @@ use crate::endpoints;
 use crate::installer::DownloadProgress;
 use crate::launch::MinecraftLauncher;
 use crate::reporter::ReporterHandle;
-use sha1::{Digest as Sha1Digest, Sha1};
+use sha1::{Digest, Sha1};
 use sha2::Sha512;
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -247,6 +247,9 @@ where
 
             let mut stream_ok = true;
             let mut downloaded: u64 = 0;
+            let mut sha1_hasher = expected_sha1.map(|_| Sha1::new());
+            let mut sha512_hasher = expected_sha512.map(|_| Sha512::new());
+            let mut magic_header = Vec::with_capacity(4);
 
             match File::create(&tmp_path) {
                 Ok(mut tmp_file) => {
@@ -258,6 +261,16 @@ where
                                     last_err = format!("写入临时文件失败: {}", e);
                                     stream_ok = false;
                                     break;
+                                }
+                                if magic_header.len() < 4 {
+                                    let need = 4 - magic_header.len();
+                                    magic_header.extend_from_slice(&chunk[..chunk.len().min(need)]);
+                                }
+                                if let Some(h) = sha1_hasher.as_mut() {
+                                    h.update(&chunk);
+                                }
+                                if let Some(h) = sha512_hasher.as_mut() {
+                                    h.update(&chunk);
                                 }
                                 downloaded += chunk.len() as u64;
                                 on_progress(downloaded, total_bytes.max(downloaded));
@@ -280,7 +293,76 @@ where
 
             if stream_ok {
                 let check_size = expected_size.or(content_len.filter(|&c| c > 0));
-                if is_file_valid_with_hash(&tmp_path, check_size, expected_sha1, expected_sha512) {
+                let mut valid = true;
+
+                if let Some(exp) = check_size {
+                    if exp > 0 && downloaded != exp {
+                        last_err = format!(
+                            "{} 大小不匹配 (期望: {} 字节, 实际: {} 字节)",
+                            file_name, exp, downloaded
+                        );
+                        valid = false;
+                    }
+                } else if downloaded == 0 {
+                    last_err = format!("{} 下载内容为空 (0 字节)", file_name);
+                    valid = false;
+                }
+
+                if valid {
+                    let is_archive = target_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .map(|ext| ext.eq_ignore_ascii_case("jar") || ext.eq_ignore_ascii_case("zip"))
+                        .unwrap_or(false);
+                    if is_archive
+                        && (downloaded < 4
+                            || (magic_header.as_slice() != b"PK\x03\x04"
+                                && magic_header.as_slice() != b"PK\x05\x06"))
+                    {
+                        last_err = format!("{} 无效的 ZIP/JAR 归档文件（缺少 PK 魔数）", file_name);
+                        valid = false;
+                    }
+                }
+
+                if valid {
+                    if let Some(exp_sha1) = expected_sha1 {
+                        let actual = sha1_hasher
+                            .map(|h| format!("{:x}", h.finalize()))
+                            .unwrap_or_default();
+                        if !actual.eq_ignore_ascii_case(exp_sha1.trim()) {
+                            let exp_short =
+                                if exp_sha1.len() >= 8 { &exp_sha1[..8] } else { exp_sha1 };
+                            let act_short =
+                                if actual.len() >= 8 { &actual[..8] } else { &actual };
+                            last_err = format!(
+                                "{} SHA1 校验不匹配 (期望: {}..., 实际: {}...)",
+                                file_name, exp_short, act_short
+                            );
+                            valid = false;
+                        }
+                    }
+                }
+
+                if valid {
+                    if let Some(exp_sha512) = expected_sha512 {
+                        let actual = sha512_hasher
+                            .map(|h| format!("{:x}", h.finalize()))
+                            .unwrap_or_default();
+                        if !actual.eq_ignore_ascii_case(exp_sha512.trim()) {
+                            let exp_short =
+                                if exp_sha512.len() >= 8 { &exp_sha512[..8] } else { exp_sha512 };
+                            let act_short =
+                                if actual.len() >= 8 { &actual[..8] } else { &actual };
+                            last_err = format!(
+                                "{} SHA512 校验不匹配 (期望: {}..., 实际: {}...)",
+                                file_name, exp_short, act_short
+                            );
+                            valid = false;
+                        }
+                    }
+                }
+
+                if valid {
                     if target_path.exists() {
                         let _ = fs::remove_file(target_path);
                     }
@@ -294,27 +376,6 @@ where
                     } else {
                         return Ok(());
                     }
-                } else {
-                    let actual_hash = if expected_sha1.is_some() {
-                        compute_file_sha1(&tmp_path).unwrap_or_else(|_| "read_err".to_string())
-                    } else if expected_sha512.is_some() {
-                        compute_file_sha512(&tmp_path).unwrap_or_else(|_| "read_err".to_string())
-                    } else {
-                        "none".to_string()
-                    };
-                    let exp_short = expected_sha1
-                        .or(expected_sha512)
-                        .map(|h| if h.len() >= 8 { &h[0..8] } else { h })
-                        .unwrap_or("none");
-                    let act_short = if actual_hash.len() >= 8 {
-                        &actual_hash[0..8]
-                    } else {
-                        &actual_hash
-                    };
-                    last_err = format!(
-                        "{} SHA 校验不匹配 (期望: {}..., 实际: {}...)",
-                        file_name, exp_short, act_short
-                    );
                 }
             }
 

@@ -447,6 +447,10 @@ pub async fn pace_mirror_request(url: &str) {
     if !url.contains(BMCLAPI_ROOT) {
         return;
     }
+    // 静态 CDN 资源（音效/语言包、Maven 依赖库）支持高并发拉取，仅对元数据与 API 接口执行节流
+    if url.contains("/assets/") || url.contains("/maven/") || url.contains("/libraries/") {
+        return;
+    }
     static NEXT_ALLOWED: std::sync::OnceLock<tokio::sync::Mutex<tokio::time::Instant>> =
         std::sync::OnceLock::new();
     let lock = NEXT_ALLOWED.get_or_init(|| tokio::sync::Mutex::new(tokio::time::Instant::now()));
@@ -467,5 +471,27 @@ pub async fn pace_mirror_request(url: &str) {
 
     if let Some(target) = wait_until {
         tokio::time::sleep_until(target).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_pace_mirror_request_bypasses_static_cdn() {
+        let static_urls = [
+            "https://bmclapi2.bangbang93.com/assets/e0/e0b89e",
+            "https://bmclapi2.bangbang93.com/maven/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar",
+            "https://bmclapi2.bangbang93.com/libraries/com/mojang/patchy/1.3.9/patchy-1.3.9.jar",
+        ];
+        let start = std::time::Instant::now();
+        for _ in 0..10 {
+            for u in &static_urls {
+                pace_mirror_request(u).await;
+            }
+        }
+        // 30 次静态 CDN 请求由于绕过节流器，应在数毫秒内完成（远小于 30 * 65ms = 1950ms）
+        assert!(start.elapsed().as_millis() < 200);
     }
 }

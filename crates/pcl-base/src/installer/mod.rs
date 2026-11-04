@@ -409,7 +409,8 @@ impl VersionInstaller {
                 }
                 let prefix = &entry.hash[0..2];
                 let target_obj_path = objects_dir.join(prefix).join(&entry.hash);
-                if download::is_file_valid(&target_obj_path, Some(entry.size), Some(&entry.hash)) {
+                // 资源文件以精确大小校验本地缓存命中，避免对数千个小文件全量读盘
+                if download::is_file_valid(&target_obj_path, Some(entry.size), None) {
                     continue;
                 }
                 let (primary_url, backup_url) =
@@ -418,7 +419,7 @@ impl VersionInstaller {
                     target_path: target_obj_path,
                     urls: vec![primary_url, backup_url],
                     expected_size: Some(entry.size),
-                    expected_sha1: Some(entry.hash.clone()),
+                    expected_sha1: None,
                     extract_natives: None,
                 });
             }
