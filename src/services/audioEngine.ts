@@ -24,7 +24,6 @@ export interface EqPreset {
   id: string
   name: string
   desc: string
-  icon: string
   // [80Hz, 250Hz, 1kHz, 4kHz, 12kHz] 单位 dB (-12 ~ +12)
   gains: [number, number, number, number, number]
 }
@@ -34,42 +33,36 @@ export const EQ_PRESETS: EqPreset[] = [
     id: 'flat',
     name: '原声监听',
     desc: '原汁原味，真实还原母带细节',
-    icon: '🎧',
     gains: [0, 0, 0, 0, 0],
   },
   {
     id: 'bass_boost',
     name: '重低音加强',
     desc: '强化低频下潜与节奏感，震撼澎湃',
-    icon: '🔊',
     gains: [6.0, 3.0, -1.0, 1.5, 2.0],
   },
   {
     id: 'ambient',
     name: 'MC 氛围沉浸',
     desc: '空灵纯净、声场开阔，专为 C418/Lena 原声优化',
-    icon: '🌲',
     gains: [3.5, 1.5, -2.0, 2.5, 4.5],
   },
   {
     id: 'vocal',
     name: '清澈人声',
     desc: '强化人声主体与歌词咬字，清脆明亮',
-    icon: '🎤',
     gains: [-2.0, -1.0, 4.0, 2.5, -0.5],
   },
   {
     id: 'warm',
     name: '温润柔和',
     desc: '削减刺耳高频，柔美耐听，常驻后台防疲劳',
-    icon: '☕',
     gains: [2.5, 2.0, 0.5, -2.0, -4.0],
   },
   {
     id: 'custom',
     name: '自定义',
     desc: '手动微调 5 频段增益',
-    icon: '🎛️',
     gains: [0, 0, 0, 0, 0],
   },
 ]

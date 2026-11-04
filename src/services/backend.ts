@@ -1,6 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import type {
+  VersionInfo,
+  JavaInfo,
+  UserProfile,
+  DeviceCodeResponse,
+  ModInfo,
+} from './types.generated'
+
+export type { VersionInfo, JavaInfo, UserProfile, DeviceCodeResponse, ModInfo }
 
 export interface PlatformInfo {
   os: string
@@ -17,38 +26,6 @@ export interface MusicTrack {
   path: string
   folder_path: string
   size_mb: number
-}
-
-export interface JavaInfo {
-  path: string
-  version: string
-  major_version: number
-  is_64_bit: boolean
-  is_jdk: boolean
-  arch?: string
-}
-
-export interface VersionInfo {
-  id: string
-  name: string
-  version_type: string
-  loader?: string
-  release_time?: string
-  main_class?: string
-  has_indie: boolean
-  path: string
-  java_version?: number
-}
-
-export interface ModInfo {
-  file_name: string
-  name: string
-  mod_id: string
-  version: string
-  description?: string
-  authors?: string[]
-  is_enabled: boolean
-  icon_base64?: string
 }
 
 export interface ResourceItem {
@@ -124,23 +101,6 @@ export interface DownloadProgress {
   speed_text: string
   is_finished: boolean
   error?: string
-}
-
-export interface DeviceCodeResponse {
-  user_code: string
-  device_code: string
-  verification_uri: string
-  expires_in: number
-  interval: number
-}
-
-export interface UserProfile {
-  name: string
-  uuid: string
-  access_token: string
-  avatar_url: string
-  auth_type?: string
-  auth_server?: string
 }
 
 export interface AppConfig {

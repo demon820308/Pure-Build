@@ -597,10 +597,7 @@ const handleOpenDefaultMusicDir = async () => {
                 @click="store.setMusicEqPreset(preset.id)"
               >
                 <div class="flex items-center justify-between">
-                  <span class="font-bold text-pcl-text text-xs flex items-center gap-1">
-                    <span>{{ preset.icon }}</span>
-                    <span>{{ preset.name }}</span>
-                  </span>
+                  <span class="font-bold text-pcl-text text-xs">{{ preset.name }}</span>
                   <span
                     v-if="store.musicEqPreset === preset.id"
                     class="text-[10px] text-pcl-primary font-bold"

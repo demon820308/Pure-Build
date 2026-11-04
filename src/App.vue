@@ -511,7 +511,7 @@ const classicNavItems: Array<{
               </button>
 
               <button
-                class="px-2 py-1 text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+                class="px-2 py-1 text-[11px] flex items-center cursor-pointer transition-all"
                 :class="
                   store.uiStyle === 'classic'
                     ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
@@ -520,7 +520,6 @@ const classicNavItems: Array<{
                 :title="`调音音效：${currentEqMeta.name}（${currentEqMeta.desc}，点击快速切换预设）`"
                 @click="cycleEqPreset()"
               >
-                <span>{{ currentEqMeta.icon }}</span>
                 <span class="text-[10px] font-medium">{{ currentEqMeta.name }}</span>
               </button>
             </div>
@@ -564,14 +563,14 @@ const classicNavItems: Array<{
               </button>
             </div>
 
-            <div class="flex items-center gap-1 w-[82px] shrink-0" :title="`音量: ${store.musicVolume}%`">
+            <div class="flex items-center gap-1 flex-1 min-w-0 max-w-[120px]" :title="`音量: ${store.musicVolume}%`">
               <span class="text-[11px]">{{ store.musicVolume === 0 ? '🔇' : '🔊' }}</span>
               <input
                 type="range"
                 min="0"
                 max="100"
                 :value="store.musicVolume"
-                class="w-full accent-[var(--pcl-color-primary)] cursor-pointer h-1"
+                class="w-full min-w-0 accent-[var(--pcl-color-primary)] cursor-pointer h-1"
                 @input="(e) => store.setMusicVolume(Number((e.target as HTMLInputElement).value))"
               />
             </div>

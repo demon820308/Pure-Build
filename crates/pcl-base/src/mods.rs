@@ -2,9 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
+use ts_rs::TS;
 use zip::ZipArchive;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct ModInfo {
     pub file_name: String,
     pub name: String,

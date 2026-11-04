@@ -11,9 +11,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tar::Archive;
 use tokio::io::AsyncWriteExt;
+use ts_rs::TS;
 use zip::ZipArchive;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct JavaInfo {
     pub path: String,
     pub version: String,

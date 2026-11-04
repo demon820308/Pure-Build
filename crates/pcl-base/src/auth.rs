@@ -4,22 +4,26 @@ use crate::endpoints::{
     XBL_AUTH_URL, XSTS_AUTH_URL,
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 fn default_verification_uri() -> String {
     MS_DEFAULT_VERIFICATION_URI.to_string()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct DeviceCodeResponse {
     pub user_code: String,
     pub device_code: String,
-    #[serde(alias = "verification_url", default = "default_verification_uri")]
+    #[serde(alias = "verification_url")]
+    #[serde(default = "default_verification_uri")]
     pub verification_uri: String,
+    #[ts(type = "number")]
     pub expires_in: u64,
+    #[ts(type = "number")]
     pub interval: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct UserProfile {
     pub name: String,
     pub uuid: String,
