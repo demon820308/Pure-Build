@@ -34,3 +34,7 @@ pcl_config.json
 **/pcl_config.json
 pcl_credentials.json
 **/pcl_credentials.json
+
+# Website generated pages (built by Cloudflare Pages from site/build.py)
+site/*.html
+site/en/*.html
