@@ -58,7 +58,7 @@ async function fetchLatest() {
 
 export async function getRelease(context) {
   try {
-    return await cached(context, "release-v1", 3600, fetchLatest);
+    return await cached(context, "release-v2", 3600, fetchLatest);
   } catch (e) {
     return FALLBACK;
   }
