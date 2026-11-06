@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
 import type { RemoteVersion } from '@/services/backend'
 import MyButton from '@/components/base/MyButton.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import InlineProgress from './InlineProgress.vue'
 import { open } from '@tauri-apps/plugin-dialog'
 
@@ -192,58 +193,58 @@ const handleDownloadServer = async (v: RemoteVersion) => {
 
         <input
           v-model="searchQuery"
-          placeholder="搜索版本号 (如 1.21.4)..."
-          class="px-3.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors w-36 min-w-[90px]"
+          placeholder="搜索版本号..."
+          class="px-3 py-1.5 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors w-36 min-w-[90px]"
         />
 
         <MyButton type="secondary" size="small" :loading="isLoading" @click="emit('refresh')">
-          🔄
+          <PclIcon name="refresh" :size="12" />
         </MyButton>
       </div>
     </div>
 
     <div class="flex-1 overflow-y-auto pr-1 space-y-2">
       <div v-if="isLoading && versions.length === 0" class="h-64 flex flex-col items-center justify-center text-pcl-subtext text-xs gap-3">
-        <span class="animate-spin text-2xl">⏳</span>
-        <span>正在从镜像源拉取官方全量版本清单...</span>
+        <PclIcon name="refresh" :size="24" class="animate-spin text-pcl-primary" />
+        <span>正在拉取官方版本清单...</span>
       </div>
 
       <div
         v-for="v in filteredVersions"
         :key="v.id"
-        class="flex flex-col p-3.5 rounded-2xl border transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
+        class="flex flex-col p-3 rounded-xl border transition-colors"
         :class="[
           isVersionDownloading(v.id)
-            ? 'border-pcl-primary bg-pcl-primary/5 ring-2 ring-pcl-primary/20'
-            : 'border-pcl-border bg-pcl-card shadow-sm'
+            ? 'border-pcl-primary/60 bg-pcl-primary/5'
+            : 'border-pcl-border bg-pcl-card shadow-xs'
         ]"
       >
         <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3.5 overflow-hidden">
+          <div class="flex items-center gap-3 overflow-hidden">
             <div
-              class="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
-              :class="v.type === 'release' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'"
+              class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              :class="v.type === 'release' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-black/5 dark:bg-white/10 text-pcl-subtext'"
             >
-              {{ v.type === 'release' ? '🌱' : '⚡' }}
+              <PclIcon name="vanilla" :size="16" />
             </div>
             <div class="truncate">
               <div class="font-semibold text-sm text-pcl-text flex items-center gap-2">
                 <span>Minecraft {{ v.id }}</span>
                 <span
-                  class="text-[10px] px-2 py-0.2 rounded font-normal"
-                  :class="v.type === 'release' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'"
+                  class="text-[10px] px-1.5 py-0.2 rounded font-mono"
+                  :class="v.type === 'release' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-black/5 dark:bg-white/10 text-pcl-subtext'"
                 >
-                  {{ v.type === 'release' ? '正式版' : '快照/测试' }}
+                  {{ v.type === 'release' ? 'Release' : 'Snapshot' }}
                 </span>
                 <span
                   v-if="isInstalled(v.id)"
-                  class="text-[10px] bg-emerald-500/15 text-emerald-600 px-2 py-0.2 rounded font-semibold flex items-center gap-1"
+                  class="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 rounded font-medium flex items-center gap-1"
                 >
-                  <span>✓</span> 已安装
+                  <PclIcon name="check" :size="10" /> 已安装
                 </span>
               </div>
-              <div class="text-xs text-pcl-subtext mt-0.5">
-                发布日期：{{ formatDate(v.releaseTime) }} · SHA1: {{ v.sha1.substring(0, 8) }}...
+              <div class="text-xs text-pcl-subtext mt-0.5 font-mono">
+                {{ formatDate(v.releaseTime) }} · {{ v.sha1.substring(0, 8) }}
               </div>
             </div>
           </div>
@@ -251,59 +252,60 @@ const handleDownloadServer = async (v: RemoteVersion) => {
           <div class="shrink-0 ml-4 flex items-center gap-2">
             <div class="flex items-center gap-1 mr-1">
               <button
-                class="p-2 rounded-xl text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-sm"
+                class="px-2 py-1 rounded-md text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
                 title="另存为（将该版本与依赖库下载导出到独立文件夹）"
                 @click.stop="handleSaveAs(v)"
               >
-                💾
+                另存为
               </button>
               <button
-                class="p-2 rounded-xl text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-sm"
+                class="p-1.5 rounded-md text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
                 title="更新日志（查看官方版本更新说明）"
                 @click.stop="emit('showChangelog', v)"
               >
-                ℹ️
+                <PclIcon name="info" :size="13" />
               </button>
               <button
-                class="p-2 rounded-xl text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-sm"
+                class="px-2 py-1 rounded-md text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
                 title="下载服务端（一键下载官方 server.jar 并生成开服脚本）"
                 @click.stop="handleDownloadServer(v)"
               >
-                🗄️
+                服务端
               </button>
             </div>
 
             <div
               v-if="isVersionDownloading(v.id) && store.downloadTask"
-              class="flex items-center gap-2 text-xs font-bold text-pcl-primary px-3 py-1.5 rounded-xl bg-pcl-primary/10 animate-pulse"
+              class="flex items-center gap-2 text-xs font-medium text-pcl-primary px-3 py-1.5 rounded-md bg-pcl-primary/10"
             >
-              <span class="animate-spin text-sm">⏳</span>
-              <span>{{ store.downloadTask.percentage.toFixed(0) }}% {{ store.downloadTask.speed_text }}</span>
+              <PclIcon name="refresh" :size="12" class="animate-spin" />
+              <span class="font-mono tabular-nums">{{ store.downloadTask.percentage.toFixed(0) }}% {{ store.downloadTask.speed_text }}</span>
             </div>
             <template v-else-if="isInstalled(v.id)">
               <button
-                class="px-3.5 py-1.5 rounded-xl text-xs font-semibold cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white shadow-sm transition-all duration-200 active:scale-95 flex items-center gap-1"
+                class="px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center gap-1"
                 @click="goToLaunch(v.id)"
               >
-                <span>🚀</span>
-                <span>前往启动</span>
+                <PclIcon name="launch" :size="12" />
+                <span>启动</span>
               </button>
               <button
                 :disabled="store.isDownloading"
-                class="px-2.5 py-1.5 rounded-xl text-xs text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
+                class="p-1.5 rounded-md text-xs text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
                 title="重新配置并安装此版本"
                 @click="emit('configure', v)"
               >
-                🔄
+                <PclIcon name="refresh" :size="12" />
               </button>
             </template>
             <template v-else>
               <button
                 :disabled="store.isDownloading"
-                class="px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active text-white shadow-sm transition-all duration-200 ease-[var(--pcl-ease-bounce)] active:scale-95 disabled:opacity-50"
+                class="px-3.5 py-1.5 rounded-md text-xs font-medium cursor-pointer bg-pcl-primary hover:bg-pcl-hover text-white shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 @click="emit('configure', v)"
               >
-                📥 安装
+                <PclIcon name="download" :size="12" />
+                <span>安装</span>
               </button>
             </template>
           </div>

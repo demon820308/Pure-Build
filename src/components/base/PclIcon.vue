@@ -24,6 +24,26 @@ const props = withDefaults(
       | 'back'
       | 'min'
       | 'close'
+      | 'music'
+      | 'folder'
+      | 'info'
+      | 'check'
+      | 'stop'
+      | 'play'
+      | 'pause'
+      | 'prev'
+      | 'next'
+      | 'search'
+      | 'copy'
+      | 'volume'
+      | 'mute'
+      | 'warning'
+      | 'bulb'
+      | 'shuffle'
+      | 'repeat'
+      | 'repeat-once'
+      | 'broadcast'
+      | 'image'
     size?: number
   }>(),
   {
@@ -129,6 +149,106 @@ const iconSpec = computed<{ viewBox: string; d: string }>(() => {
       return {
         viewBox: '0 0 20 20',
         d: 'M2,0 L0,2 8,10 0,18 2,20 10,12 18,20 20,18 12,10 20,2 18,0 10,8 2,0Z',
+      }
+    case 'music':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
+      }
+    case 'folder':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
+      }
+    case 'info':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z',
+      }
+    case 'check':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
+      }
+    case 'stop':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M6 6h12v12H6z',
+      }
+    case 'play':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M8 5v14l11-7z',
+      }
+    case 'pause':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M6 19h4V5H6v14zm8-14v14h4V5h-4z',
+      }
+    case 'prev':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M6 6h2v12H6zm3.5 6l8.5 6V6z',
+      }
+    case 'next':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z',
+      }
+    case 'search':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+      }
+    case 'copy':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z',
+      }
+    case 'volume':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',
+      }
+    case 'mute':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z',
+      }
+    case 'warning':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
+      }
+    case 'bulb':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6A4.997 4.997 0 0 1 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1z',
+      }
+    case 'shuffle':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z',
+      }
+    case 'repeat':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z',
+      }
+    case 'repeat-once':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4zm-4-2V9h-1l-2 1v1h1.5v4H13z',
+      }
+    case 'broadcast':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M21.5 12c0-1.07-.37-2.06-1-2.85V4.5c0-.83-.67-1.5-1.5-1.5h-1c-.83 0-1.5.67-1.5 1.5v.72L11.7 8H6c-1.1 0-2 .9-2 2v4c0 1.1.9 2 2 2h1v4c0 .55.45 1 1 1h2c.55 0 1-.45 1-1v-4h2.7l4.8 2.78v.72c0 .83.67 1.5 1.5 1.5h1c.83 0 1.5-.67 1.5-1.5v-4.65c.63-.79 1-1.78 1-2.85zM6 14v-4h4v4H6zm10 2.21l-4-2.31v-3.8l4-2.31v8.42z',
+      }
+    case 'image':
+      return {
+        viewBox: '0 0 24 24',
+        d: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
       }
   }
 })

@@ -215,8 +215,9 @@ defineExpose({
         </div>
 
         <div v-if="runningPid" class="mt-6 w-full">
-          <MyButton type="danger" size="small" class="w-full" @click="emit('killGame')">
-            ⏹️ 强制关闭 Minecraft (PID: {{ runningPid }})
+          <MyButton type="danger" size="small" class="w-full flex items-center justify-center gap-1.5" @click="emit('killGame')">
+            <PclIcon name="stop" :size="12" />
+            <span>强制关闭 Minecraft (PID: {{ runningPid }})</span>
           </MyButton>
         </div>
       </div>
@@ -233,7 +234,7 @@ defineExpose({
     </MyHint>
 
     <MyCard
-      :title="store.customHomepageNotice ? '📌 自定义主页公告' : '👋 欢迎使用 Pure Build Launcher (PBL)'"
+      :title="store.customHomepageNotice ? '主页公告' : 'Pure Build 工作台'"
       subtitle="可在「设置 → 个性化」中自定义此处的主页看板文案与背景壁纸"
     >
       <div class="text-xs text-pcl-text whitespace-pre-wrap leading-relaxed">

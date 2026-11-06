@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/app'
 import MyListItem from '@/components/base/MyListItem.vue'
 import { backend } from '@/services/backend'
 import type { RemoteVersion } from '@/services/backend'
+import PclIcon from '@/components/base/PclIcon.vue'
 
 import GameVersionCenter from '@/components/download/GameVersionCenter.vue'
 import InstallConfigPanel from '@/components/download/InstallConfigPanel.vue'
@@ -133,51 +134,51 @@ onMounted(() => {
     >
       <div
         v-if="store.uiStyle === 'modern'"
-        class="flex items-center justify-between gap-3 shrink-0 pb-1 border-b border-pcl-border/60"
+        class="flex items-center justify-between gap-3 shrink-0 pb-1 border-b border-pcl-border"
       >
-        <div class="flex items-center gap-1 p-1 rounded-2xl bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0 overflow-x-auto no-scrollbar">
+        <div class="flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0 overflow-x-auto no-scrollbar">
           <button
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'game' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="currentSection === 'game' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
             @click="currentSection = 'game'"
           >
-            <span>💎</span>
+            <PclIcon name="vanilla" :size="13" />
             <span>原版游戏</span>
           </button>
 
           <button
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'mod' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="currentSection === 'mod' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
             @click="currentSection = 'mod'"
           >
-            <span>🧩</span>
-            <span>社区Mod</span>
+            <PclIcon name="mod" :size="13" />
+            <span>社区 Mod</span>
           </button>
 
           <button
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'modpack' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="currentSection === 'modpack' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
             @click="currentSection = 'modpack'"
           >
-            <span>📦</span>
+            <PclIcon name="modpack" :size="13" />
             <span>整合包</span>
           </button>
 
           <button
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'shader' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="currentSection === 'shader' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
             @click="currentSection = 'shader'"
           >
-            <span>✨</span>
+            <PclIcon name="shader" :size="13" />
             <span>光影包</span>
           </button>
 
           <button
-            class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'resourcepack' ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/20' : 'text-pcl-subtext hover:text-pcl-text'"
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="currentSection === 'resourcepack' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
             @click="currentSection = 'resourcepack'"
           >
-            <span>🎨</span>
+            <PclIcon name="resourcepack" :size="13" />
             <span>材质包</span>
           </button>
         </div>
@@ -190,9 +191,9 @@ onMounted(() => {
           >
             {{ store.currentVersion.name }}
           </span>
-          <span class="text-emerald-500 flex items-center gap-1 text-[11px] whitespace-nowrap shrink-0">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-            <span>Modrinth & BMCLAPI 在线</span>
+          <span class="text-emerald-500 flex items-center gap-1.5 text-[11px] whitespace-nowrap shrink-0 font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+            <span>镜像在线</span>
           </span>
         </div>
       </div>

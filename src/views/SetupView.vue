@@ -3,6 +3,7 @@ import { useAppStore } from '@/stores/app'
 import MyCard from '@/components/base/MyCard.vue'
 import MyButton from '@/components/base/MyButton.vue'
 import MyListItem from '@/components/base/MyListItem.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import SetupMusicCard from '@/components/setup/SetupMusicCard.vue'
 import { backend } from '@/services/backend'
 import type { JavaInfo } from '@/services/backend'
@@ -122,24 +123,24 @@ const handleLocalWallpaperFile = (e: Event) => {
     >
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
-          ⚙️
+        <div class="w-9 h-9 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-primary flex items-center justify-center shrink-0">
+          <PclIcon name="setup" :size="18" />
         </div>
         <div>
-          <h2 class="text-base font-bold text-pcl-text flex items-center gap-2">
-            <span>全局启动与常规设置</span>
-            <span v-if="saveSuccess" class="text-xs bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded font-normal animate-pulse">
-              ✔ 配置已持久化保存
+          <h2 class="text-sm font-semibold text-pcl-text flex items-center gap-2">
+            <span>全局设置</span>
+            <span v-if="saveSuccess" class="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+              配置已保存
             </span>
           </h2>
           <p class="text-xs text-pcl-subtext mt-0.5">
-            配置自动保存至本地 pcl_config.json，重启启动器后依然生效
+            配置持久化存储至本地配置文件
           </p>
         </div>
       </div>
 
       <MyButton type="primary" size="small" @click="handleSave">
-        💾 保存设置
+        保存设置
       </MyButton>
     </div>
 
@@ -153,15 +154,16 @@ const handleLocalWallpaperFile = (e: Event) => {
           <div class="flex items-center gap-2">
             <input
               v-model="store.gameDir"
-              class="flex-1 px-3.5 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors font-mono"
+              class="flex-1 px-3 py-1.5 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary transition-colors font-mono"
               @change="store.saveCurrentConfig"
             />
             <MyButton type="secondary" size="small" @click="handleSelectGameDir">
-              📁 浏览...
+              <PclIcon name="folder" :size="12" class="mr-1" />
+              浏览
             </MyButton>
           </div>
           <p class="text-[11px] text-pcl-subtext">
-            💡 支持任意目录位置。点击“浏览”可唤起系统原生文件夹选择窗口，修改后主界面与版本管理页面将自动重新扫描。
+            支持任意目录位置。点击“浏览”可唤起系统原生文件夹选择窗口，修改后将自动重新扫描。
           </p>
         </div>
       </MyCard>
@@ -293,7 +295,7 @@ const handleLocalWallpaperFile = (e: Event) => {
                 "
                 @click="store.setUiStyle('classic')"
               >
-                <span class="text-lg">🏛️</span>
+                <PclIcon name="instance" :size="16" class="text-pcl-subtext shrink-0 mt-0.5" />
                 <div>
                   <div class="font-bold text-pcl-text flex items-center gap-1.5">
                     <span>PBL 经典布局 (Classic)</span>
@@ -319,7 +321,7 @@ const handleLocalWallpaperFile = (e: Event) => {
                 "
                 @click="store.setUiStyle('modern')"
               >
-                <span class="text-lg">✨</span>
+                <PclIcon name="launch" :size="16" class="text-pcl-primary shrink-0 mt-0.5" />
                 <div>
                   <div class="font-bold text-pcl-text flex items-center gap-1.5">
                     <span>现代 PBL 侧栏布局 (Modern)</span>
@@ -380,7 +382,7 @@ const handleLocalWallpaperFile = (e: Event) => {
                 @change="handleLocalWallpaperFile"
               />
               <MyButton type="secondary" size="small" @click="bgFileInput?.click()">
-                🖼️ 选择本地图片
+                <PclIcon name="image" :size="13" class="mr-1.5" />选择本地图片
               </MyButton>
               <MyButton
                 v-if="store.customBgUrl"
@@ -446,7 +448,7 @@ const handleLocalWallpaperFile = (e: Event) => {
       >
         <template #extra>
           <MyButton type="text" size="small" :loading="isLoadingJava" @click="refreshJava">
-            🔄 重新扫描
+            重新扫描
           </MyButton>
         </template>
         <div class="space-y-2">

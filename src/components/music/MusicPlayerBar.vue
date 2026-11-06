@@ -6,6 +6,7 @@ import { useConfigStore } from '@/stores/config'
 import { useMusicStore } from '@/stores/music'
 import { useSessionStore } from '@/stores/session'
 import { EQ_PRESETS } from '@/services/audioEngine'
+import PclIcon from '@/components/base/PclIcon.vue'
 
 const config = useConfigStore()
 const music = useMusicStore()
@@ -26,14 +27,16 @@ const filteredMusicTracks = computed(() => {
   )
 })
 
-const playModeMeta = computed(() => {
+const playModeMeta = computed<{ iconName: 'shuffle' | 'repeat' | 'repeat-once'; label: string }>(() => {
   switch (config.musicPlayMode) {
     case 'shuffle':
-      return { icon: '🔀', label: '随机循环' }
+      return { iconName: 'shuffle', label: '随机' }
     case 'list':
-      return { icon: '🔁', label: '列表循环' }
+      return { iconName: 'repeat', label: '循环' }
     case 'single':
-      return { icon: '🔂', label: '单曲循环' }
+      return { iconName: 'repeat-once', label: '单曲' }
+    default:
+      return { iconName: 'repeat', label: '循环' }
   }
 })
 
@@ -129,9 +132,9 @@ defineExpose({
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
-              <span class="text-sm">{{ music.isMusicPlaying ? '🎵' : '⏸️' }}</span>
+              <PclIcon :name="music.isMusicPlaying ? 'music' : 'play'" :size="13" class="text-pcl-primary shrink-0" />
               <span
-                class="font-bold truncate text-[13px]"
+                class="font-semibold truncate text-[13px]"
                 :class="config.uiStyle === 'classic' ? 'text-[var(--pcl-brush-1)]' : 'text-pcl-text'"
                 :title="music.currentTrack?.name"
               >
@@ -175,36 +178,22 @@ defineExpose({
           />
         </div>
 
-        <div class="flex items-center justify-between gap-1.5">
+        <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-1 shrink-0">
             <button
-              class="px-2 py-1 text-[11px] flex items-center gap-1 cursor-pointer transition-all"
+              class="px-2 py-1 text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
               :class="
                 config.uiStyle === 'classic'
                   ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                  : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/60 hover:text-pcl-primary'
+                  : 'rounded-md border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/60 hover:text-pcl-primary'
               "
-              :title="`循环模式：${playModeMeta.label}（点击切换）`"
+              :title="`播放模式：${playModeMeta.label}（点击切换）`"
               @click="music.cycleMusicPlayMode()"
             >
-              <span>{{ playModeMeta.icon }}</span>
+              <PclIcon :name="playModeMeta.iconName" :size="12" />
+              <span>{{ playModeMeta.label }}</span>
             </button>
 
-            <button
-              class="px-2 py-1 text-[11px] flex items-center cursor-pointer transition-all"
-              :class="
-                config.uiStyle === 'classic'
-                  ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                  : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/60 hover:text-pcl-primary'
-              "
-              :title="`调音音效：${currentEqMeta.name}（${currentEqMeta.desc}，点击快速切换预设）`"
-              @click="cycleEqPreset()"
-            >
-              <span class="text-[10px] font-medium">{{ currentEqMeta.name }}</span>
-            </button>
-          </div>
-
-          <div class="flex items-center gap-1">
             <button
               class="w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
               :class="
@@ -215,7 +204,7 @@ defineExpose({
               title="上一曲"
               @click="music.playPrevTrack()"
             >
-              ⏮
+              <PclIcon name="prev" :size="12" />
             </button>
             <button
               class="w-8 h-8 flex items-center justify-center cursor-pointer transition-all active:scale-95"
@@ -227,7 +216,7 @@ defineExpose({
               :title="music.isMusicPlaying ? '暂停' : '播放'"
               @click="music.toggleMusicPlay()"
             >
-              {{ music.isMusicPlaying ? '⏸' : '▶' }}
+              <PclIcon :name="music.isMusicPlaying ? 'pause' : 'play'" :size="14" />
             </button>
             <button
               class="w-7 h-7 flex items-center justify-center cursor-pointer transition-colors"
@@ -239,12 +228,12 @@ defineExpose({
               title="下一曲（也可直接右键音乐按钮）"
               @click="music.playNextTrack()"
             >
-              ⏭
+              <PclIcon name="next" :size="12" />
             </button>
           </div>
 
-          <div class="flex items-center gap-1 flex-1 min-w-0 max-w-[120px]" :title="`音量: ${config.musicVolume}%`">
-            <span class="text-[11px]">{{ config.musicVolume === 0 ? '🔇' : '🔊' }}</span>
+          <div class="flex items-center gap-1.5 flex-1 min-w-[100px] max-w-[140px]" :title="`音量: ${config.musicVolume}%`">
+            <PclIcon :name="config.musicVolume === 0 ? 'mute' : 'volume'" :size="12" class="text-pcl-subtext shrink-0" />
             <input
               type="range"
               min="0"
@@ -261,42 +250,53 @@ defineExpose({
           :class="config.uiStyle === 'classic' ? 'border-black/8' : 'border-pcl-border'"
         >
           <button
-            class="flex-1 py-1.5 px-2.5 font-semibold flex items-center justify-center gap-1 cursor-pointer transition-all"
+            class="flex-1 py-1 px-2 text-xs font-medium flex items-center justify-center gap-1 cursor-pointer transition-colors"
             :class="
               config.uiStyle === 'classic'
                 ? 'rounded-[4px] border border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-8)] text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-6)]'
-                : 'rounded-xl bg-pcl-primary hover:bg-pcl-hover text-white shadow-sm'
+                : 'rounded-md bg-pcl-primary hover:bg-pcl-hover text-white shadow-xs'
             "
-            title="添加本地音乐文件夹（自动递归扫描子文件夹）"
+            title="添加本地音乐文件夹"
             @click="handleAddMusicFolder"
           >
-            <span>➕</span>
             <span>添加文件夹</span>
           </button>
           <button
-            class="py-1.5 px-2.5 flex items-center gap-1 cursor-pointer transition-all"
+            class="py-1 px-2 text-xs flex items-center cursor-pointer transition-all"
             :class="
               config.uiStyle === 'classic'
                 ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/50 hover:text-pcl-primary'
+                : 'rounded-md border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/60 hover:text-pcl-primary'
             "
-            title="打开默认 Musics 音乐文件夹"
+            :title="`调音音效：${currentEqMeta.name}（${currentEqMeta.desc}，点击快速切换预设）`"
+            @click="cycleEqPreset()"
+          >
+            <span class="text-[10px] font-medium">{{ currentEqMeta.name }}</span>
+          </button>
+          <button
+            class="py-1 px-2 text-xs flex items-center gap-1 cursor-pointer transition-colors"
+            :class="
+              config.uiStyle === 'classic'
+                ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
+                : 'rounded-md border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/50 hover:text-pcl-primary'
+            "
+            title="打开默认 Musics 文件夹"
             @click="handleOpenDefaultMusicDir"
           >
-            <span>📂</span>
+            <PclIcon name="folder" :size="11" />
             <span>默认库</span>
           </button>
           <button
-            class="py-1.5 px-2.5 flex items-center gap-1 cursor-pointer transition-all"
+            class="py-1 px-2 text-xs flex items-center gap-1 cursor-pointer transition-colors"
             :class="
               config.uiStyle === 'classic'
                 ? 'rounded-[4px] border border-black/20 bg-white text-[#343d4a] hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-2)] hover:bg-[var(--pcl-brush-7)]'
-                : 'rounded-xl border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/50 hover:text-pcl-primary'
+                : 'rounded-md border border-pcl-border bg-[var(--pcl-color-bg)] text-pcl-text hover:border-pcl-primary/50 hover:text-pcl-primary'
             "
             title="重新扫描所有音乐文件夹"
             @click="music.refreshMusicPlaylist(false)"
           >
-            <span>🔄</span>
+            <PclIcon name="refresh" :size="11" />
           </button>
         </div>
 
@@ -308,15 +308,16 @@ defineExpose({
             :class="
               config.uiStyle === 'classic'
                 ? 'rounded-[3px] bg-[var(--pcl-brush-8)] border border-[var(--pcl-brush-5)] text-[var(--pcl-brush-2)]'
-                : 'rounded-lg bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary'
+                : 'rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text'
             "
             :title="dir"
           >
+            <PclIcon name="folder" :size="10" class="text-pcl-subtext shrink-0" />
             <span
               class="truncate max-w-[210px] cursor-pointer hover:underline"
               @click="backend.openFolder(dir)"
             >
-              📁 {{ folderBaseName(dir) }}
+              {{ folderBaseName(dir) }}
             </span>
             <button
               class="hover:text-red-500 cursor-pointer ml-0.5 font-bold"
@@ -349,7 +350,7 @@ defineExpose({
           >
             {{
               music.musicTracks.length === 0
-                ? '暂无音乐，点击上方「➕ 添加文件夹」导入音乐库'
+                ? '暂无音乐，点击上方「添加文件夹」导入音乐库'
                 : '未找到匹配的曲目'
             }}
           </div>
@@ -370,14 +371,13 @@ defineExpose({
             @click="music.playTrack(track, true)"
           >
             <div class="flex items-center gap-1.5 min-w-0 flex-1">
-              <span class="text-[11px] shrink-0">
-                {{
-                  music.currentTrack?.path === track.path
-                    ? music.isMusicPlaying
-                      ? '🔊'
-                      : '⏸'
-                    : '♪'
-                }}
+              <span class="shrink-0 flex items-center justify-center w-3">
+                <PclIcon
+                  v-if="music.currentTrack?.path === track.path"
+                  :name="music.isMusicPlaying ? 'volume' : 'play'"
+                  :size="10"
+                />
+                <span v-else class="text-[9px] opacity-40">●</span>
               </span>
               <span class="truncate text-[11.5px]">{{ track.name }}</span>
             </div>
@@ -432,9 +432,7 @@ defineExpose({
           />
         </svg>
 
-        <span class="text-sm relative z-10" :class="music.isMusicPlaying ? 'animate-pulse' : ''">
-          {{ music.isMusicPlaying ? '🎵' : '🎶' }}
-        </span>
+        <PclIcon name="music" :size="16" class="relative z-10" />
       </button>
     </div>
   </div>

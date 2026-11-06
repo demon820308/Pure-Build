@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import MyCard from '@/components/base/MyCard.vue'
 import MyButton from '@/components/base/MyButton.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import { backend } from '@/services/backend'
 import type { JavaInfo } from '@/services/backend'
 import { useVersionsStore } from '@/stores/versions'
@@ -114,38 +115,41 @@ defineExpose({
     <template #extra>
       <span
         v-if="modelValue"
-        class="px-2 py-0.5 rounded-md bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary text-[11px] font-semibold"
+        class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text text-[11px] font-mono"
       >
-        ☕ Java {{ modelValue.version }} ({{ modelValue.arch || '64-Bit' }})
+        <PclIcon name="gear" :size="11" class="text-pcl-subtext" />
+        Java {{ modelValue.version }} ({{ modelValue.arch || '64-Bit' }})
       </span>
     </template>
 
     <div v-if="javaList.length === 0" class="text-xs text-pcl-subtext p-2">
       正在搜寻 Java 运行时...
     </div>
-    <div v-else class="space-y-2">
+    <div v-else class="space-y-1.5">
       <div
         v-for="(j, idx) in javaList"
         :key="j.path"
-        class="flex items-center justify-between px-3 py-2 rounded-xl border border-pcl-border bg-black/5 dark:bg-black/25 text-xs cursor-pointer transition-all"
-        :class="modelValue?.path === j.path && 'border-pcl-primary bg-pcl-primary/10 ring-1 ring-pcl-primary/30'"
+        class="flex items-center justify-between px-3 py-2 rounded-lg border border-pcl-border bg-black/5 dark:bg-black/25 text-xs cursor-pointer transition-colors"
+        :class="modelValue?.path === j.path && 'border-pcl-primary/60 bg-pcl-primary/10'"
         @click="handleSelect(j)"
       >
         <div class="flex items-center gap-2.5 overflow-hidden">
-          <span class="text-base">{{ j.is_jdk ? '☕' : '📦' }}</span>
+          <PclIcon name="gear" :size="14" class="text-pcl-subtext shrink-0" />
           <div class="truncate">
-            <div class="font-semibold text-pcl-text flex items-center gap-1.5">
+            <div class="font-medium text-pcl-text flex items-center gap-1.5">
               <span>Java {{ j.version }}</span>
-              <span v-if="idx === 0" class="text-[10px] bg-pcl-primary/20 text-pcl-primary px-1.5 py-0.2 rounded font-bold">推荐</span>
-              <span class="text-[10px] bg-black/5 dark:bg-white/10 px-1.5 py-0.2 rounded text-pcl-subtext">
+              <span v-if="idx === 0" class="text-[10px] bg-black/5 dark:bg-white/10 text-pcl-subtext px-1.5 py-0.2 rounded font-mono">推荐</span>
+              <span class="text-[10px] bg-black/5 dark:bg-white/10 px-1.5 py-0.2 rounded text-pcl-subtext font-mono">
                 {{ j.arch || (j.is_64_bit ? '64-Bit' : '32-Bit') }}
               </span>
             </div>
             <div class="text-[11px] text-pcl-subtext truncate mt-0.5 font-mono" :title="j.path">{{ j.path }}</div>
           </div>
         </div>
-        <span v-if="modelValue?.path === j.path" class="text-pcl-primary font-bold ml-2 shrink-0">✔ 已选</span>
-        <span v-else class="text-emerald-500 font-bold ml-2 shrink-0">可用</span>
+        <span v-if="modelValue?.path === j.path" class="text-pcl-primary font-medium ml-2 shrink-0 flex items-center gap-1">
+          <PclIcon name="check" :size="12" />
+          已选
+        </span>
       </div>
     </div>
   </MyCard>

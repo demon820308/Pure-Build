@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import MyCard from '@/components/base/MyCard.vue'
 import MyButton from '@/components/base/MyButton.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import { backend } from '@/services/backend'
 import { open } from '@tauri-apps/plugin-dialog'
 import { EQ_PRESETS, EQ_BANDS } from '@/services/audioEngine'
@@ -83,8 +84,8 @@ const handleOpenDefaultMusicDir = async () => {
     <div class="space-y-4 text-xs">
       <div class="flex items-center justify-between gap-3 p-3 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border">
         <div class="min-w-0 flex-1">
-          <div class="font-bold text-pcl-text flex items-center gap-2 truncate">
-            <span>{{ music.isMusicPlaying ? '🎵 正在播放：' : '⏸️ 当前曲目：' }}</span>
+          <div class="font-semibold text-pcl-text flex items-center gap-2 truncate">
+            <span>{{ music.isMusicPlaying ? '正在播放：' : '当前曲目：' }}</span>
             <span class="text-pcl-primary truncate">{{ music.currentTrack?.name || '暂无播放曲目' }}</span>
           </div>
           <div class="text-[11px] text-pcl-subtext mt-0.5">
@@ -93,13 +94,13 @@ const handleOpenDefaultMusicDir = async () => {
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           <MyButton type="secondary" size="small" @click="music.playPrevTrack()">
-            ⏮ 上一首
+            上一首
           </MyButton>
           <MyButton type="primary" size="small" @click="music.toggleMusicPlay()">
-            {{ music.isMusicPlaying ? '⏸ 暂停' : '▶ 播放' }}
+            {{ music.isMusicPlaying ? '暂停' : '播放' }}
           </MyButton>
           <MyButton type="secondary" size="small" @click="music.playNextTrack()">
-            ⏭ 下一首
+            下一首
           </MyButton>
         </div>
       </div>
@@ -108,7 +109,7 @@ const handleOpenDefaultMusicDir = async () => {
         <div class="space-y-1.5">
           <div class="flex justify-between text-[11px] text-pcl-subtext">
             <span>音乐播放音量</span>
-            <span class="font-mono font-bold text-pcl-primary">{{ config.musicVolume }}%</span>
+            <span class="font-mono font-medium text-pcl-primary">{{ config.musicVolume }}%</span>
           </div>
           <input
             :value="config.musicVolume"
@@ -125,12 +126,12 @@ const handleOpenDefaultMusicDir = async () => {
           <div class="grid grid-cols-3 gap-1.5">
             <button
               v-for="mode in [
-                { id: 'shuffle', label: '🔀 随机循环' },
-                { id: 'list', label: '🔁 列表循环' },
-                { id: 'single', label: '🔂 单曲循环' },
+                { id: 'shuffle', label: '随机循环' },
+                { id: 'list', label: '列表循环' },
+                { id: 'single', label: '单曲循环' },
               ] as const"
               :key="mode.id"
-              class="py-1 px-2 rounded-lg border text-[11px] font-medium cursor-pointer transition-colors"
+              class="py-1 px-2 rounded-md border text-[11px] font-medium cursor-pointer transition-colors"
               :class="
                 config.musicPlayMode === mode.id
                   ? 'border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-3)] text-white'
@@ -148,7 +149,7 @@ const handleOpenDefaultMusicDir = async () => {
         <div class="flex items-center justify-between">
           <div>
             <div class="font-bold text-pcl-text flex items-center gap-1.5">
-              <span>🎛️ 音频调音与均衡器 (DSP)</span>
+              <span>音频调音与均衡器 (DSP)</span>
               <span class="text-[10px] px-1.5 py-0.5 rounded bg-pcl-primary/10 text-pcl-primary font-mono font-medium">Web Audio API</span>
             </div>
             <div class="text-[11px] text-pcl-subtext mt-0.5">
@@ -288,13 +289,15 @@ const handleOpenDefaultMusicDir = async () => {
           </span>
           <div class="flex items-center gap-2">
             <MyButton type="primary" size="small" @click="handleAddMusicFolder">
-              ➕ 添加音乐文件夹
+              添加文件夹
             </MyButton>
             <MyButton type="secondary" size="small" @click="handleOpenDefaultMusicDir">
-              📂 打开默认音乐库
+              <PclIcon name="folder" :size="12" class="mr-1" />
+              默认音乐库
             </MyButton>
             <MyButton type="secondary" size="small" @click="music.refreshMusicPlaylist(true)">
-              🔄 刷新背景音乐
+              <PclIcon name="refresh" :size="12" class="mr-1" />
+              刷新
             </MyButton>
           </div>
         </div>

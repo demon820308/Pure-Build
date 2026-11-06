@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import MyButton from '@/components/base/MyButton.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import { backend } from '@/services/backend'
 import type { DeviceCodeResponse, UserProfile } from '@/services/backend'
 import { useSessionStore } from '@/stores/session'
@@ -63,7 +64,7 @@ const startMicrosoftLogin = async () => {
     await session.setUserProfile(profile)
     emit('success', profile)
     closeModal()
-    alert(`🎉 微软正版账号登录成功！\n欢迎，${profile.name}`)
+    alert(`微软账号登录成功：${profile.name}`)
   } catch (err: any) {
     alert(`登录未完成: ${err}`)
   } finally {
@@ -105,7 +106,7 @@ const handleYggdrasilLogin = async () => {
     emit('success', profile)
     closeModal()
     yggPassword.value = ''
-    alert(`🎉 外置账号登录成功！\n角色：${profile.name}`)
+    alert(`外置账号登录成功：${profile.name}`)
   } catch (err: any) {
     alert(`外置登录失败: ${err}`)
   } finally {
@@ -121,21 +122,22 @@ const handleYggdrasilLogin = async () => {
   >
     <div class="w-96 bg-pcl-card rounded-2xl border border-pcl-border shadow-2xl p-6 flex flex-col gap-4">
       <div class="flex items-center justify-between">
-        <h3 class="font-bold text-base text-pcl-text flex items-center gap-2">
-          <span>{{ currentMode === 'msa' ? '🔑 微软账号正版登录' : '🌐 第三方外置皮肤站登录' }}</span>
+        <h3 class="font-semibold text-sm text-pcl-text flex items-center gap-2">
+          <PclIcon :name="currentMode === 'msa' ? 'msa' : 'yggdrasil'" :size="15" class="text-pcl-primary" />
+          <span>{{ currentMode === 'msa' ? '微软账号登录' : '第三方外置登录' }}</span>
         </h3>
-        <button class="text-xs text-pcl-subtext hover:text-pcl-text cursor-pointer" @click="closeModal">
-          ✕
+        <button class="opacity-50 hover:opacity-100 transition-opacity cursor-pointer" @click="closeModal">
+          <PclIcon name="close" :size="12" />
         </button>
       </div>
 
       <div v-if="currentMode === 'yggdrasil'" class="space-y-3 text-xs">
         <div class="flex flex-col gap-1">
-          <span class="text-pcl-subtext">Yggdrasil 验证服务器地址 (如 LittleSkin)：</span>
+          <span class="text-pcl-subtext">Yggdrasil 验证服务器地址：</span>
           <input
             v-model="yggApiRoot"
             type="text"
-            class="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text outline-none focus:border-pcl-primary font-mono"
+            class="px-3 py-2 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text outline-none focus:border-pcl-primary font-mono"
           />
         </div>
         <div class="flex flex-col gap-1">
@@ -144,7 +146,7 @@ const handleYggdrasilLogin = async () => {
             v-model="yggUsername"
             type="text"
             placeholder="输入皮肤站注册邮箱"
-            class="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text outline-none focus:border-pcl-primary"
+            class="px-3 py-2 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text outline-none focus:border-pcl-primary"
           />
         </div>
         <div class="flex flex-col gap-1">
@@ -153,34 +155,35 @@ const handleYggdrasilLogin = async () => {
             v-model="yggPassword"
             type="password"
             placeholder="输入密码"
-            class="px-3 py-2 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text outline-none focus:border-pcl-primary"
+            class="px-3 py-2 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-text outline-none focus:border-pcl-primary"
             @keyup.enter="handleYggdrasilLogin"
           />
         </div>
-        <MyButton type="primary" class="w-full py-2.5 mt-2" :loading="isLoggingInYgg" @click="handleYggdrasilLogin">
+        <MyButton type="primary" class="w-full py-2 mt-2" :loading="isLoggingInYgg" @click="handleYggdrasilLogin">
           登录并绑定角色
         </MyButton>
       </div>
 
       <div v-else-if="isRequestingCode" class="py-8 flex flex-col items-center justify-center gap-3 text-xs text-pcl-subtext">
-        <span class="animate-spin text-2xl">⏳</span>
+        <PclIcon name="refresh" :size="20" class="animate-spin text-pcl-primary" />
         <span>正在连接微软认证服务器...</span>
       </div>
 
-      <div v-else-if="deviceAuth" class="space-y-4">
+      <div v-else-if="deviceAuth" class="space-y-3.5">
         <p class="text-xs text-pcl-subtext leading-relaxed">
-          请点击下方按钮复制配对码，并在打开的微软官方页面中完成登录授权：
+          点击下方按钮复制配对码并在浏览器中完成授权：
         </p>
 
-        <div class="p-3.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-primary/30 flex items-center justify-between">
+        <div class="p-3 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border flex items-center justify-between">
           <span class="text-xs text-pcl-subtext">配对码：</span>
-          <span class="text-lg font-mono font-bold text-pcl-primary tracking-widest">
+          <span class="text-base font-mono font-semibold text-pcl-primary tracking-widest">
             {{ deviceAuth.user_code }}
           </span>
         </div>
 
-        <MyButton type="primary" class="w-full py-2.5" @click="copyCodeAndOpenUrl">
-          {{ codeCopiedHint ? '✔ 已复制配对码！点击可再次打开微软页面' : '📋 复制配对码并打开微软页面' }}
+        <MyButton type="primary" class="w-full py-2" @click="copyCodeAndOpenUrl">
+          <PclIcon :name="codeCopiedHint ? 'check' : 'copy'" :size="13" class="mr-1.5" />
+          {{ codeCopiedHint ? '已复制配对码 (再次打开微软页面)' : '复制配对码并打开微软页面' }}
         </MyButton>
 
         <div class="text-[11px] text-center text-pcl-subtext">
@@ -188,8 +191,8 @@ const handleYggdrasilLogin = async () => {
         </div>
 
         <div v-if="isPollingAuth" class="flex items-center justify-center gap-2 text-[11px] text-pcl-subtext pt-1">
-          <span class="animate-spin">⚙️</span>
-          <span>等待你在浏览器中完成验证...</span>
+          <PclIcon name="refresh" :size="12" class="animate-spin text-pcl-primary" />
+          <span>等待在浏览器中完成验证...</span>
         </div>
       </div>
     </div>

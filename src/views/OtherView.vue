@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/app'
 import MyCard from '@/components/base/MyCard.vue'
 import MyButton from '@/components/base/MyButton.vue'
 import MyListItem from '@/components/base/MyListItem.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import { backend } from '@/services/backend'
 import type { EndpointPingResult, CacheCleanResult } from '@/services/backend'
 
@@ -54,7 +55,7 @@ const helpArticles: HelpArticle[] = [
     title: '如何使用微软正版、LittleSkin 外置登录与离线模式？',
     summary: '三种登录模式的切换与凭据安全保存机制',
     solution:
-      '• 微软正版登录：在启动页点击「🔑 微软登录」，复制 8 位设备码并在浏览器授权即可完成 Xbox Live -> XSTS -> Minecraft Profile 全链路认证。\n• 外置登录 (LittleSkin)：点击「🌐 外置登录」，输入皮肤站邮箱与密码（验证服务器地址留空即默认使用 LittleSkin 官方 Yggdrasil 接口）。\n• 离线模式：未登录正版时，点击角色名右侧的 `✎` 按钮即可随时修改离线昵称。',
+      '• 微软正版登录：在启动页选择「微软登录」，复制 8 位设备码并在浏览器授权即可完成 Xbox Live -> XSTS -> Minecraft Profile 全链路认证。\n• 外置登录 (LittleSkin)：选择「外置登录」，输入皮肤站邮箱与密码（验证服务器地址留空即默认使用 LittleSkin 官方 Yggdrasil 接口）。\n• 离线模式：未登录正版时，直接修改离线昵称即可进入游戏。',
   },
   {
     id: 'memory-fps',
@@ -144,11 +145,11 @@ onMounted(() => {
     >
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
-          🧰
+        <div class="w-9 h-9 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-primary flex items-center justify-center shrink-0">
+          <PclIcon name="more" :size="18" />
         </div>
         <div>
-          <h2 class="text-base font-bold text-pcl-text">百宝箱与疑难百科</h2>
+          <h2 class="text-sm font-semibold text-pcl-text">百宝箱与疑难百科</h2>
           <p class="text-xs text-pcl-subtext mt-0.5">
             下载源节点实时测速、游戏临时缓存清理与离线排障知识百科
           </p>
@@ -157,23 +158,24 @@ onMounted(() => {
 
       <div class="flex items-center gap-2">
         <MyButton type="secondary" size="small" :loading="isCleaning" @click="handleCleanCache">
-          🧹 清理临时缓存
+          清理临时缓存
         </MyButton>
         <MyButton type="primary" size="small" :loading="isPinging" @click="runPingTest">
-          ⚡ 重新测速
+          <PclIcon name="refresh" :size="12" class="mr-1" />
+          重新测速
         </MyButton>
       </div>
     </div>
 
     <div
       v-if="cleanResult"
-      class="px-4 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-700 dark:text-emerald-300 flex items-center justify-between"
+      class="px-3.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 dark:text-emerald-300 flex items-center justify-between"
     >
-      <span>
-        ✔ 清理完成！共清理了 <b>{{ cleanResult.removed_items }}</b> 项临时 Natives 目录与历史压缩日志，释放空间
-        <b>{{ formatBytes(cleanResult.freed_bytes) }}</b>（下次启动游戏时将自动按需解压 Natives）。
+      <span class="flex items-center gap-1.5">
+        <PclIcon name="check" :size="13" />
+        <span>已清理 <b>{{ cleanResult.removed_items }}</b> 项临时目录与日志，释放空间 <b>{{ formatBytes(cleanResult.freed_bytes) }}</b>。</span>
       </span>
-      <button class="underline cursor-pointer ml-2" @click="cleanResult = null">关闭</button>
+      <button class="underline cursor-pointer ml-2 text-xs" @click="cleanResult = null">关闭</button>
     </div>
 
     <MyCard
@@ -185,42 +187,42 @@ onMounted(() => {
         <div
           v-for="item in pingResults"
           :key="item.name"
-          class="p-3 rounded-xl border border-pcl-border bg-black/5 dark:bg-white/5 flex flex-col justify-between gap-1.5"
+          class="p-3 rounded-lg border border-pcl-border bg-black/5 dark:bg-white/5 flex flex-col justify-between gap-1.5"
         >
           <div class="flex items-center justify-between">
-            <span class="text-[10px] px-1.5 py-0.5 rounded bg-pcl-primary/15 text-pcl-primary font-medium">
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-pcl-subtext font-mono">
               {{ item.category }}
             </span>
             <span
-              class="text-xs font-mono font-bold"
+              class="text-xs font-mono font-medium"
               :class="[
                 !item.status_ok
                   ? 'text-red-500'
                   : (item.latency_ms ?? 9999) < 300
-                    ? 'text-emerald-500'
+                    ? 'text-emerald-600 dark:text-emerald-400'
                     : (item.latency_ms ?? 9999) < 800
                       ? 'text-amber-500'
                       : 'text-orange-500'
               ]"
             >
-              {{ item.status_ok && item.latency_ms !== undefined ? `${item.latency_ms} ms` : '超时/不可达' }}
+              {{ item.status_ok && item.latency_ms !== undefined ? `${item.latency_ms} ms` : '不可达' }}
             </span>
           </div>
-          <div class="text-xs font-semibold text-pcl-text truncate">{{ item.name }}</div>
+          <div class="text-xs font-medium text-pcl-text truncate">{{ item.name }}</div>
         </div>
       </div>
     </MyCard>
 
     <MyCard
       v-show="store.uiStyle === 'modern' || otherSubTab === 'all' || otherSubTab === 'help'"
-      title="Minecraft & PBL 疑难杂症百科"
+      title="疑难杂症排障百科"
       subtitle="内置离线排障词条，支持关键字即时检索"
     >
       <template #extra>
         <input
           v-model="searchQuery"
-          placeholder="🔍 搜索报错关键字、Java、Mixin..."
-          class="w-56 px-3 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary"
+          placeholder="搜索排障知识库..."
+          class="w-56 px-3 py-1 rounded-md bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none focus:border-pcl-primary"
         />
       </template>
 

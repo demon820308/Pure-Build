@@ -51,7 +51,7 @@ onMounted(async () => {
     store.resetGameState()
     store.handleMusicOnGameExit()
   })
-  // 游戏进程拉起时同步全局运行状态并自动暂停背景音乐，退出时自动恢复（还原 PCL2 经典行为）
+  // 游戏进程拉起时同步全局运行状态并自动暂停背景音乐，退出时自动恢复
   unlistenLaunchBgm = await backend.onLaunchProgress((p) => {
     store.launchProgress = p
     if (p.pid) {
@@ -83,13 +83,17 @@ onUnmounted(() => {
   window.removeEventListener('focus', handleWindowFocus)
 })
 
-const modernNavItems = [
-  { id: 'launch', name: '启动', icon: '🚀' },
-  { id: 'download', name: '下载', icon: '📥' },
-  { id: 'instance', name: '版本', icon: '📦' },
-  { id: 'setup', name: '设置', icon: '⚙️' },
-  { id: 'link', name: '联机', icon: '🌐' },
-  { id: 'other', name: '百宝箱', icon: '🧰' },
+const modernNavItems: Array<{
+  id: string
+  name: string
+  icon: 'launch' | 'download' | 'instance' | 'setup' | 'link' | 'more'
+}> = [
+  { id: 'launch', name: '启动', icon: 'launch' },
+  { id: 'download', name: '下载', icon: 'download' },
+  { id: 'instance', name: '版本', icon: 'instance' },
+  { id: 'setup', name: '设置', icon: 'setup' },
+  { id: 'link', name: '联机', icon: 'link' },
+  { id: 'other', name: '百宝箱', icon: 'more' },
 ]
 
 const classicNavItems: Array<{
@@ -118,9 +122,9 @@ const classicNavItems: Array<{
     <Transition name="fade-slide">
       <div
         v-if="store.notificationMessage"
-        class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-black/85 dark:bg-white/95 text-white dark:text-black rounded-lg shadow-lg text-[13px] font-medium flex items-center gap-2 backdrop-blur-md pointer-events-none select-none max-w-[90vw]"
+        class="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 bg-black/85 dark:bg-white/95 text-white dark:text-black rounded-md shadow-md text-xs font-medium flex items-center gap-2 backdrop-blur-md pointer-events-none select-none max-w-[90vw]"
       >
-        <span>ℹ️</span>
+        <PclIcon name="info" :size="13" />
         <span>{{ store.notificationMessage }}</span>
       </div>
     </Transition>
@@ -160,21 +164,6 @@ const classicNavItems: Array<{
             alt="PBL"
             class="w-6 h-6 object-contain pointer-events-none select-none drop-shadow-sm"
           />
-          <svg
-            width="44"
-            height="15"
-            viewBox="24 0 64 31"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="text-[#1D1D1F] dark:text-gray-100 pointer-events-none"
-          >
-            <path
-              d="M26,29 v-25 h6 a7,7 0 0 1 0,14 h-6 M47,29 v-25 h6.5 a6,6 0 0 1 0,12 h-6.5 h7 a6.5,6.5 0 0 1 0,13 h-7 M71,4 v25 h13.5"
-            />
-          </svg>
           <span class="text-[14px] font-semibold text-[#1D1D1F] dark:text-gray-100 tracking-wide pointer-events-none">
             Pure Build Launcher
           </span>
@@ -205,7 +194,7 @@ const classicNavItems: Array<{
           title="切换为现代侧栏布局 (可在设置中随时切回)"
           @click="store.setUiStyle('modern')"
         >
-          ✨ 现代布局
+          现代布局
         </button>
 
         <!-- macOS 使用原生红绿灯，Windows/Linux 显示自绘按钮 -->
@@ -241,16 +230,16 @@ const classicNavItems: Array<{
           alt="PBL"
           class="w-5 h-5 object-contain select-none drop-shadow-sm"
         />
-        <span>Pure Build Launcher (PBL)</span>
+        <span>Pure Build Launcher</span>
       </div>
 
       <div class="flex items-center gap-1.5 z-10">
         <button
-          class="px-2.5 h-7 flex items-center gap-1 rounded-lg border border-pcl-primary/30 bg-pcl-primary/15 text-pcl-primary hover:bg-pcl-primary/25 text-[11px] font-medium transition-colors cursor-pointer"
-          title="一键切换为 1:1 经典布局"
+          class="px-2.5 h-7 flex items-center gap-1 rounded-md border border-pcl-border bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-pcl-subtext hover:text-pcl-text text-[11px] font-medium transition-colors cursor-pointer"
+          title="切换为经典布局"
           @click="store.setUiStyle('classic')"
         >
-          🏛️ 切换经典布局
+          经典布局
         </button>
 
         <template v-if="!store.platformInfo?.is_macos">
@@ -273,40 +262,40 @@ const classicNavItems: Array<{
     <div class="relative z-10 flex-1 flex overflow-hidden">
       <aside
         v-if="store.uiStyle === 'modern'"
-        class="w-18 flex flex-col items-center py-4 gap-3 bg-pcl-card/30 border-r border-pcl-border shrink-0 select-none"
+        class="w-16 flex flex-col items-center py-3 gap-2 bg-pcl-card border-r border-pcl-border shrink-0 select-none"
       >
         <button
           v-for="item in modernNavItems"
           :key="item.id"
-          class="w-12 h-12 rounded-2xl flex flex-col items-center justify-center gap-1 text-xs font-medium cursor-pointer transition-all duration-300 ease-[var(--pcl-ease-bounce)]"
+          class="w-11 h-11 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors duration-150"
           :class="[
             store.currentTab === item.id
-              ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/30 scale-105'
+              ? 'bg-pcl-primary text-white font-medium shadow-xs'
               : 'text-pcl-subtext hover:bg-black/5 dark:hover:bg-white/5 hover:text-pcl-text'
           ]"
           @click="store.currentTab = item.id"
         >
-          <span class="text-base">{{ item.icon }}</span>
-          <span class="text-[10px] scale-90">{{ item.name }}</span>
+          <PclIcon :name="item.icon" :size="16" />
+          <span class="text-[10px] leading-none">{{ item.name }}</span>
         </button>
 
         <button
-          class="mt-auto w-12 h-12 rounded-2xl flex flex-col items-center justify-center relative cursor-pointer transition-all duration-300 ease-[var(--pcl-ease-bounce)] active:scale-95 group"
+          class="mt-auto w-11 h-11 rounded-xl flex flex-col items-center justify-center relative cursor-pointer transition-colors duration-150 group"
           :class="[
             musicPlayerRef?.showMusicPopover
-              ? 'bg-pcl-primary text-white shadow-md shadow-pcl-primary/30 scale-105'
-              : 'bg-pcl-card border border-pcl-border text-pcl-primary shadow-pcl-card hover:border-pcl-primary/60 hover:bg-pcl-primary/10 hover:scale-105'
+              ? 'bg-pcl-primary text-white font-medium shadow-xs'
+              : 'text-pcl-subtext hover:bg-black/5 dark:hover:bg-white/5 hover:text-pcl-text'
           ]"
           :title="
             store.currentTrack
-              ? `${store.isMusicPlaying ? '正在播放' : '已暂停'}：${store.currentTrack.name}\n左键打开迷你播放列表，右键切下一首`
-              : '左键打开音乐播放列表 / 添加文件夹，右键切下一首'
+              ? `${store.isMusicPlaying ? '正在播放' : '已暂停'}：${store.currentTrack.name}\n左键打开播放列表，右键切下一首`
+              : '左键打开音乐播放列表，右键切下一首'
           "
           @click="musicPlayerRef && (musicPlayerRef.showMusicPopover = !musicPlayerRef.showMusicPopover)"
           @contextmenu.prevent="musicPlayerRef?.handleMusicBallRightClick()"
         >
           <div
-            class="absolute bottom-1 left-2 right-2 h-1 rounded-full bg-black/20 dark:bg-white/20 overflow-hidden pointer-events-none"
+            class="absolute bottom-1 left-2 right-2 h-0.5 rounded-full bg-black/20 dark:bg-white/20 overflow-hidden pointer-events-none"
           >
             <div
               class="h-full transition-all duration-200"
@@ -315,13 +304,8 @@ const classicNavItems: Array<{
             />
           </div>
 
-          <span class="text-base relative z-10" :class="store.isMusicPlaying ? 'animate-pulse' : ''">
-            {{ store.isMusicPlaying ? '🎵' : '🎶' }}
-          </span>
-          <span
-            class="text-[10px] scale-85 leading-none transition-colors"
-            :class="musicPlayerRef?.showMusicPopover ? 'text-white font-medium' : 'text-pcl-subtext group-hover:text-pcl-primary'"
-          >
+          <PclIcon name="music" :size="16" />
+          <span class="text-[10px] leading-none mt-1">
             音乐
           </span>
         </button>
@@ -351,18 +335,18 @@ const classicNavItems: Array<{
         @click="store.currentTab = 'download'"
       >
         <div
-          class="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0 transition-colors"
+          class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors"
           :class="[
             store.downloadTask.error
-              ? 'bg-rose-500/15 text-rose-500'
+              ? 'bg-rose-500/10 text-rose-500'
               : store.downloadTask.is_finished
-                ? 'bg-emerald-500/15 text-emerald-500'
-                : 'bg-pcl-primary/15 text-pcl-primary'
+                ? 'bg-emerald-500/10 text-emerald-500'
+                : 'bg-pcl-primary/10 text-pcl-primary'
           ]"
         >
-          <span v-if="store.downloadTask.error">❌</span>
-          <span v-else-if="store.downloadTask.is_finished">✓</span>
-          <span v-else class="animate-spin text-xs">⏳</span>
+          <PclIcon v-if="store.downloadTask.error" name="close" :size="12" />
+          <PclIcon v-else-if="store.downloadTask.is_finished" name="check" :size="13" />
+          <PclIcon v-else name="refresh" :size="12" class="animate-spin" />
         </div>
 
         <div class="flex-1 min-w-0 flex flex-col gap-1">

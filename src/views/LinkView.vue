@@ -5,6 +5,7 @@ import MyCard from '@/components/base/MyCard.vue'
 import MyButton from '@/components/base/MyButton.vue'
 import MyHint from '@/components/base/MyHint.vue'
 import MyListItem from '@/components/base/MyListItem.vue'
+import PclIcon from '@/components/base/PclIcon.vue'
 import { backend } from '@/services/backend'
 import type { LanRoomInfo } from '@/services/backend'
 
@@ -114,33 +115,33 @@ onMounted(() => {
     >
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-pcl-primary/20 flex items-center justify-center text-lg">
-          🌐
+        <div class="w-9 h-9 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-primary flex items-center justify-center shrink-0">
+          <PclIcon name="link" :size="18" />
         </div>
         <div>
-          <h2 class="text-base font-bold text-pcl-text flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-pcl-text flex items-center gap-2">
             <span>局域网联机大厅</span>
             <span
               v-if="copyFeedback"
-              class="text-xs bg-emerald-500/15 text-emerald-600 px-2 py-0.5 rounded font-normal"
+              class="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.2 rounded font-medium"
             >
-              ✔ {{ copyFeedback }}
+              {{ copyFeedback }}
             </span>
           </h2>
           <p class="text-xs text-pcl-subtext mt-0.5">
-            探测局域网/虚拟局域网内的 Minecraft 共享世界（UDP 224.0.2.60:4445），支持邀请码一键互连
+            探测局域网内的 Minecraft 共享世界（UDP 224.0.2.60:4445），支持邀请码直连
           </p>
         </div>
       </div>
 
       <MyButton type="primary" size="small" :loading="isScanning" @click="scanRooms">
-        📡 扫描局域网房间
+        扫描房间
       </MyButton>
     </div>
 
     <MyHint type="info">
-      💡 联机提示：房主在单人世界中按 ESC 点击「对局域网开放」后，本大厅可自动捕获广播或生成
-      <b>PBL-LINK</b> 邀请码；配合虚拟局域网或内网穿透工具即可实现跨网联机。
+      房主在单人世界中按 ESC 点击「对局域网开放」后，大厅可自动捕获广播或生成
+      <b>PBL-LINK</b> 邀请码；配合虚拟局域网或内网穿透工具即可跨网联机。
     </MyHint>
 
     <div class="grid grid-cols-2 gap-4">
@@ -182,7 +183,8 @@ onMounted(() => {
             :loading="isBroadcasting"
             @click="handleBroadcast"
           >
-            📣 发送局域网广播并生成邀请码
+            <PclIcon name="broadcast" :size="13" class="mr-1.5" />
+            发送局域网广播并生成邀请码
           </MyButton>
 
           <div
@@ -221,32 +223,35 @@ onMounted(() => {
           </div>
 
           <MyButton type="secondary" size="small" class="w-full" @click="handleDecodeInvite">
-            🔍 解析邀请码
+            <PclIcon name="search" :size="12" class="mr-1" />
+            解析邀请码
           </MyButton>
 
-          <div v-if="decodeError" class="text-[11px] text-red-500 font-medium">
-            ❌ {{ decodeError }}
+          <div v-if="decodeError" class="text-[11px] text-red-500 font-medium flex items-center gap-1">
+            <PclIcon name="close" :size="11" />
+            <span>{{ decodeError }}</span>
           </div>
 
           <div
             v-if="decodedResult"
-            class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2"
+            class="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 space-y-2"
           >
             <div class="flex items-center justify-between">
-              <span class="font-bold text-emerald-600 dark:text-emerald-400">✔ 解析成功！直连服务器地址：</span>
+              <span class="font-medium text-emerald-600 dark:text-emerald-400">直连服务器地址：</span>
               <MyButton
                 type="primary"
                 size="small"
                 @click="copyText(decodedResult.address, '服务器直连地址')"
               >
-                📋 复制地址
+                <PclIcon name="copy" :size="12" class="mr-1" />
+                复制地址
               </MyButton>
             </div>
-            <div class="font-mono font-bold text-sm text-pcl-text select-all">
+            <div class="font-mono font-medium text-sm text-pcl-text select-all">
               {{ decodedResult.address }}
             </div>
             <div class="text-[11px] text-pcl-subtext">
-              打开游戏 → 多人游戏 → 直接连接 → 粘贴上方地址即可加入世界。
+              在游戏多人游戏中直接连接并粘贴上方地址即可加入。
             </div>
           </div>
         </div>
@@ -271,9 +276,10 @@ onMounted(() => {
           class="flex items-center justify-between p-3 rounded-xl border border-pcl-border bg-black/5 dark:bg-white/5 hover:border-pcl-primary/40 transition-colors"
         >
           <div>
-            <div class="font-bold text-sm text-pcl-text flex items-center gap-2">
-              <span>🌍 {{ room.motd }}</span>
-              <span class="text-[10px] font-mono bg-pcl-primary/15 text-pcl-primary px-2 py-0.5 rounded">
+            <div class="font-semibold text-sm text-pcl-text flex items-center gap-2">
+              <PclIcon name="link" :size="13" class="text-pcl-primary shrink-0" />
+              <span>{{ room.motd }}</span>
+              <span class="text-[10px] font-mono bg-black/5 dark:bg-white/10 text-pcl-subtext px-1.5 py-0.2 rounded">
                 {{ room.server_address }}
               </span>
             </div>

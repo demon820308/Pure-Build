@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PclIcon from './PclIcon.vue'
+
 withDefaults(
   defineProps<{
     type?: 'info' | 'warning' | 'error' | 'success'
@@ -25,11 +27,11 @@ const emit = defineEmits<{
       type === 'success' && 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
     ]"
   >
-    <div class="font-bold text-sm select-none">
-      <span v-if="type === 'info'">ℹ️</span>
-      <span v-else-if="type === 'warning'">⚠️</span>
-      <span v-else-if="type === 'error'">❌</span>
-      <span v-else-if="type === 'success'">✅</span>
+    <div class="shrink-0 mt-0.5 select-none">
+      <PclIcon v-if="type === 'info'" name="info" :size="14" />
+      <PclIcon v-else-if="type === 'warning'" name="warning" :size="14" />
+      <PclIcon v-else-if="type === 'error'" name="close" :size="14" />
+      <PclIcon v-else-if="type === 'success'" name="check" :size="14" />
     </div>
     <div class="flex-1 min-w-0">
       <slot />
@@ -37,11 +39,11 @@ const emit = defineEmits<{
     <button
       v-if="closable"
       type="button"
-      class="text-xs opacity-50 hover:opacity-100 transition-opacity p-0.5 -mr-1 -mt-0.5 cursor-pointer select-none"
+      class="opacity-50 hover:opacity-100 transition-opacity p-0.5 -mr-1 -mt-0.5 cursor-pointer select-none"
       title="关闭提示"
       @click="emit('close')"
     >
-      ✕
+      <PclIcon name="close" :size="10" />
     </button>
   </div>
 </template>

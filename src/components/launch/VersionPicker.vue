@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useVersionsStore } from '@/stores/versions'
+import PclIcon from '@/components/base/PclIcon.vue'
 import type { VersionInfo } from '@/services/backend'
 
 const props = withDefaults(
@@ -42,25 +43,25 @@ const handleSelect = (v: VersionInfo) => {
 
   <div
     v-else
-    class="mt-3 space-y-1.5 border-t border-pcl-border pt-2.5 max-h-44 overflow-y-auto"
+    class="mt-2.5 space-y-1 border-t border-pcl-border pt-2 max-h-44 overflow-y-auto"
   >
     <div
       v-for="v in versionsStore.installedVersions"
       :key="v.id"
-      class="flex items-center justify-between p-2 rounded-xl cursor-pointer transition-colors text-xs"
+      class="flex items-center justify-between px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-xs"
       :class="
         versionsStore.currentVersion?.id === v.id
-          ? 'bg-pcl-primary/15 border border-pcl-primary/30 text-pcl-primary font-semibold'
+          ? 'bg-pcl-primary/10 border border-pcl-primary/30 text-pcl-primary font-medium'
           : 'hover:bg-black/5 dark:hover:bg-white/5 text-pcl-text'
       "
       @click="handleSelect(v)"
     >
       <div class="flex items-center gap-2 truncate">
-        <span>{{ v.loader ? '🧩' : '⛏️' }}</span>
+        <PclIcon :name="v.loader ? 'mod' : 'instance'" :size="13" class="text-pcl-subtext shrink-0" />
         <span class="truncate">{{ v.name }}</span>
       </div>
-      <span class="text-pcl-subtext shrink-0 ml-2">
-        {{ versionsStore.currentVersion?.id === v.id ? '当前选中' : v.loader || '原版' }}
+      <span class="text-pcl-subtext shrink-0 ml-2 font-mono text-[11px]">
+        {{ versionsStore.currentVersion?.id === v.id ? '当前选中' : v.loader || 'Vanilla' }}
       </span>
     </div>
   </div>

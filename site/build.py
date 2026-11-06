@@ -5,7 +5,7 @@ import os
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SITE = ROOT
-VER = "v0.1.6"
+VER = "v0.1.7"
 
 NAV = {
     "zh": [("首页", "index.html"), ("下载", "download.html"), ("更新日志", "changelog.html")],
@@ -73,8 +73,8 @@ def home(lang):
     if zh:
         tagline = "快、干净、跨平台的沙盒游戏启动器"
         sub = "为 Windows、macOS 与 Linux 打造的一致启动体验：装版本、配 Java、下整合包、联机，全都收进一个清爽的界面里。"
-        dl, more = "下载 <span data-rel=\"version\">v0.1.6</span>", "查看更新日志"
-        ver = "最新版本 <span data-rel=\"version\">v0.1.6</span> · <span data-rel=\"date\">2026-11-04</span> · Windows / macOS / Linux"
+        dl, more = "下载 <span data-rel=\"version\">v0.1.7</span>", "查看更新日志"
+        ver = "最新版本 <span data-rel=\"version\">v0.1.7</span> · <span data-rel=\"date\">2026-11-06</span> · Windows / macOS / Linux"
         stats = [("3", "操作系统平台"), ("6", "种官方安装包"), ("0.7s", "热启动耗时（实测）"), ("54", "自动化测试守护")]
         f_title, f_lede = "该有的，一样不少", "从装第一个版本到和朋友联机，每一步都替你想好了。"
         s_title, s_lede = "界面预览", ""
@@ -82,8 +82,8 @@ def home(lang):
     else:
         tagline = "A fast, clean, cross-platform sandbox game launcher"
         sub = "One consistent launching experience on Windows, macOS and Linux: installing versions, sorting out Java, fetching modpacks and playing together — all in one tidy interface."
-        dl, more = "Download <span data-rel=\"version\">v0.1.6</span>", "See the changelog"
-        ver = "Latest release <span data-rel=\"version\">v0.1.6</span> · <span data-rel=\"date\">Nov 4, 2026</span> · Windows / macOS / Linux"
+        dl, more = "Download <span data-rel=\"version\">v0.1.7</span>", "See the changelog"
+        ver = "Latest release <span data-rel=\"version\">v0.1.7</span> · <span data-rel=\"date\">Nov 6, 2026</span> · Windows / macOS / Linux"
         stats = [("3", "operating systems"), ("6", "official installers"), ("0.7s", "warm start (measured)"), ("54", "automated tests")]
         f_title, f_lede = "Everything you need, nothing you don't", "From your first install to a multiplayer night with friends, every step is taken care of."
         s_title, s_lede = "A look inside", ""
@@ -110,25 +110,25 @@ def home(lang):
 DL_GROUPS = {
 "zh": [
  ("Windows", "推荐使用安装程序（.exe），会自动补齐 WebView2 与运行库；.msi 适合批量部署。",
-  [("/dl/windows-setup", "Pure.Build.Launcher_0.1.6_x64-setup.exe", "安装程序 · x64 · 5.3 MB", True),
-   ("/dl/windows-msi", "Pure.Build.Launcher_0.1.6_x64_en-US.msi", "MSI 安装包 · x64 · 7.2 MB", False)]),
+  [("/dl/windows-setup", "Pure.Build.Launcher_0.1.7_x64-setup.exe", "安装程序 · x64 · 5.3 MB", True),
+   ("/dl/windows-msi", "Pure.Build.Launcher_0.1.7_x64_en-US.msi", "MSI 安装包 · x64 · 7.2 MB", False)]),
  ("macOS", "通用包（Universal），Apple Silicon 与 Intel 均可使用；首次打开请看下方注意事项。",
-  [("/dl/macos-dmg", "Pure.Build.Launcher_0.1.6_universal.dmg", "DMG 磁盘映像 · Universal · 17.2 MB", True)]),
+  [("/dl/macos-dmg", "Pure.Build.Launcher_0.1.7_universal.dmg", "DMG 磁盘映像 · Universal · 17.2 MB", True)]),
  ("Linux", "Debian / Ubuntu 用 .deb，Fedora / RHEL 用 .rpm，不想安装可用 AppImage 直接运行。",
-  [("/dl/linux-deb", "Pure.Build.Launcher_0.1.6_amd64.deb", "DEB 包 · amd64 · 7.6 MB", False),
-   ("/dl/linux-rpm", "Pure.Build.Launcher-0.1.6-1.x86_64.rpm", "RPM 包 · x86_64 · 7.6 MB", False),
-   ("/dl/linux-appimage", "Pure.Build.Launcher_0.1.6_amd64.AppImage", "AppImage · amd64 · 82.0 MB", False)]),
+  [("/dl/linux-deb", "Pure.Build.Launcher_0.1.7_amd64.deb", "DEB 包 · amd64 · 7.6 MB", False),
+   ("/dl/linux-rpm", "Pure.Build.Launcher-0.1.7-1.x86_64.rpm", "RPM 包 · x86_64 · 7.6 MB", False),
+   ("/dl/linux-appimage", "Pure.Build.Launcher_0.1.7_amd64.AppImage", "AppImage · amd64 · 82.0 MB", False)]),
 ],
 "en": [
  ("Windows", "The setup program (.exe) is recommended — it installs WebView2 and the runtime libraries for you. The .msi suits managed deployments.",
-  [("/dl/windows-setup", "Pure.Build.Launcher_0.1.6_x64-setup.exe", "Setup · x64 · 5.3 MB", True),
-   ("/dl/windows-msi", "Pure.Build.Launcher_0.1.6_x64_en-US.msi", "MSI package · x64 · 7.2 MB", False)]),
+  [("/dl/windows-setup", "Pure.Build.Launcher_0.1.7_x64-setup.exe", "Setup · x64 · 5.3 MB", True),
+   ("/dl/windows-msi", "Pure.Build.Launcher_0.1.7_x64_en-US.msi", "MSI package · x64 · 7.2 MB", False)]),
  ("macOS", "A universal build for both Apple Silicon and Intel Macs. Please read the first-launch note below.",
-  [("/dl/macos-dmg", "Pure.Build.Launcher_0.1.6_universal.dmg", "DMG image · Universal · 17.2 MB", True)]),
+  [("/dl/macos-dmg", "Pure.Build.Launcher_0.1.7_universal.dmg", "DMG image · Universal · 17.2 MB", True)]),
  ("Linux", ".deb for Debian / Ubuntu, .rpm for Fedora / RHEL, or AppImage to run without installing.",
-  [("/dl/linux-deb", "Pure.Build.Launcher_0.1.6_amd64.deb", "DEB package · amd64 · 7.6 MB", False),
-   ("/dl/linux-rpm", "Pure.Build.Launcher-0.1.6-1.x86_64.rpm", "RPM package · x86_64 · 7.6 MB", False),
-   ("/dl/linux-appimage", "Pure.Build.Launcher_0.1.6_amd64.AppImage", "AppImage · amd64 · 82.0 MB", False)]),
+  [("/dl/linux-deb", "Pure.Build.Launcher_0.1.7_amd64.deb", "DEB package · amd64 · 7.6 MB", False),
+   ("/dl/linux-rpm", "Pure.Build.Launcher-0.1.7-1.x86_64.rpm", "RPM package · x86_64 · 7.6 MB", False),
+   ("/dl/linux-appimage", "Pure.Build.Launcher_0.1.7_amd64.AppImage", "AppImage · amd64 · 82.0 MB", False)]),
 ]}
 
 def download(lang):
@@ -145,12 +145,12 @@ def download(lang):
                       f'<a class="btn" href="{slug}">{btn}</a></div>')
         groups += f'<div class="dl-group"><h3>{name}</h3><p class="hint">{hint}</p>{items}</div>'
     if zh:
-        head_t, head_p = "下载 Pure Build Launcher", "最新版本 <span data-rel=\"version\">v0.1.6</span> · 发布于 <span data-rel=\"date\">2026-11-04</span>"
+        head_t, head_p = "下载 Pure Build Launcher", "最新版本 <span data-rel=\"version\">v0.1.7</span> · 发布于 <span data-rel=\"date\">2026-11-06</span>"
         note_t, note_p = "⚠️ macOS 首次打开提示「已损坏」或被拦截？", "本软件未经 Apple 付费证书签名，首次打开可能被 Gatekeeper 拦截。把应用拖入「应用程序」后，在终端执行下面一行命令即可正常打开："
         alt = "也可以在当前解压目录下对 .app 执行同一命令。历史版本说明见本站更新日志页。"
         src = ""
     else:
-        head_t, head_p = "Download Pure Build Launcher", "Latest release <span data-rel=\"version\">v0.1.6</span> · <span data-rel=\"date\">Nov 4, 2026</span>"
+        head_t, head_p = "Download Pure Build Launcher", "Latest release <span data-rel=\"version\">v0.1.7</span> · <span data-rel=\"date\">Nov 6, 2026</span>"
         note_t, note_p = "⚠️ macOS says the app is damaged or blocked on first launch?", "The app is not signed with a paid Apple certificate, so Gatekeeper may block the first launch. After dragging the app into Applications, run this one line in Terminal:"
         alt = "You can also run the same command against the .app in the extraction folder. Older releases are listed on this site's changelog page."
         src = ""
@@ -164,12 +164,18 @@ def download(lang):
 <p style="color:var(--mut);font-size:14.5px">{src}</p>
 </div></section>"""
     title = "下载 — Pure Build Launcher" if zh else "Download — Pure Build Launcher"
-    desc = "下载 Pure Build Launcher v0.1.6：Windows / macOS / Linux 官方安装包。" if zh else "Download Pure Build Launcher v0.1.6 for Windows, macOS and Linux."
+    desc = "下载 Pure Build Launcher v0.1.7：Windows / macOS / Linux 官方安装包。" if zh else "Download Pure Build Launcher v0.1.7 for Windows, macOS and Linux."
     return page(lang, "download.html", title, desc, body)
 
 # 更新日志数据：(版本, 日期, [(小节, [条目...]) ...])；zh 与仓库 CHANGELOG.md 一致，en 为译文
 CHANGELOG = {
 "zh": [
+ ("v0.1.7", "2026-11-06", [
+   ("界面交互与质感升级", ["<b>全站矢量图标标准化</b>：引入轻量化纯矢量图标组件 <code>PclIcon</code>，全局替换原散落在各页面的 emoji 表情符号，统一经典与现代两套布局下的视觉设计语言。",
+                          "<b>音乐播放弹窗布局优化</b>：重构迷你播放器控制行，将调音预设下移至工具栏，完整保留循环模式文字按钮的同时将音量滑块大幅拓宽，解决音量条被挤压的问题。",
+                          "<b>标题栏品牌标识精炼</b>：优化经典布局顶部状态栏排版，去除多余的重复字母字标，保持界面干净清爽。",
+                          "<b>官网基础设施沉淀</b>：新增基于 Cloudflare Pages 与边缘函数的轻量化官网（<code>site/</code>），支持按架构自动分发多平台安装包。"]),
+ ]),
  ("v0.1.6", "2026-11-04", [
    ("架构与组件化重构", ["<b>LaunchView 架构模块化</b>：将主启动视图从 824 行巨石单文件重构为清晰内聚的子组件与 composable（<code>LaunchView.vue</code> 收敛至 68 行，下辖 <code>VersionPicker</code>、<code>JavaSelectPanel</code>、<code>LaunchClassicLayout</code>、<code>LaunchModernLayout</code> 与 <code>useLaunch</code>），各独立模块代码行数严格控制在 350 行以内。",
                       "<b>状态单一事实源与双布局解耦</b>：彻底分家 PCL 经典布局与现代网格布局，消除两套视图间的模板冗余与状态污染，确保原版 PCL 像素级一致性。",
@@ -205,6 +211,12 @@ CHANGELOG = {
  ]),
 ],
 "en": [
+ ("v0.1.7", "Nov 6, 2026", [
+   ("UI & Aesthetic Polish", ["<b>Unified vector icons</b>: standardized across the whole app using the lightweight <code>PclIcon</code> component, replacing raw emoji characters for crisp rendering at any DPI.",
+                              "<b>Music player popover redesign</b>: reworked player controls by moving EQ tuning presets to the bottom toolbar and expanding the volume slider width to over 100px while keeping full loop-mode controls.",
+                              "<b>Streamlined title bar</b>: cleaned up redundant branding in the Classic layout header to match the clean design aesthetic.",
+                              "<b>Official website infrastructure</b>: added the Cloudflare Pages & Workers static site and download routing infrastructure (<code>site/</code>)."]),
+ ]),
  ("v0.1.6", "Nov 4, 2026", [
    ("Architecture & Component Refactor", ["<b>LaunchView modularization</b>: the main launch view was refactored from an 824-line monolith into cohesive subcomponents and a composable (<code>LaunchView.vue</code> down to 68 lines, with <code>VersionPicker</code>, <code>JavaSelectPanel</code>, <code>LaunchClassicLayout</code>, <code>LaunchModernLayout</code> and <code>useLaunch</code>), each module kept under 350 lines.",
                       "<b>Single source of truth, decoupled layouts</b>: the classic PCL layout and the modern grid layout were fully separated, eliminating template duplication and state cross-talk between the two views while keeping the classic layout pixel-faithful to the original.",

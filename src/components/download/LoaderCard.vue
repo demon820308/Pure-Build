@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PclIcon from '@/components/base/PclIcon.vue'
+
 export interface LoaderItem {
   version: string
   stable: boolean
@@ -23,7 +25,7 @@ const props = withDefaults(
     selectedVersion: '',
     loading: false,
     supported: true,
-    itemIcon: '📜',
+    itemIcon: '',
   }
 )
 
@@ -35,22 +37,22 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="rounded-2xl border border-pcl-border bg-black/5 dark:bg-white/5 overflow-hidden transition-all shadow-sm">
+  <div class="rounded-xl border border-pcl-border bg-black/5 dark:bg-white/5 overflow-hidden transition-all shadow-xs">
     <div
-      class="flex items-center justify-between p-3.5 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 select-none"
+      class="flex items-center justify-between p-3 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 select-none"
       :class="!supported ? 'opacity-70' : ''"
       @click="emit('toggle')"
     >
-      <div class="flex items-center gap-2.5 font-bold text-sm text-pcl-text">
+      <div class="flex items-center gap-2 font-medium text-xs text-pcl-text">
         <span>{{ title }}</span>
       </div>
-      <div class="flex items-center gap-2 text-xs text-pcl-subtext">
-        <span v-if="selectedVersion" class="text-pcl-primary font-bold">
+      <div class="flex items-center gap-2 text-xs text-pcl-subtext font-mono">
+        <span v-if="selectedVersion" class="text-pcl-primary font-medium">
           {{ selectedVersion }}
         </span>
         <span v-else-if="loading">查询中...</span>
-        <span v-else>{{ statusText }}</span>
-        <span class="text-sm transition-transform duration-200" :class="isOpen ? 'rotate-90' : ''">›</span>
+        <span v-else class="text-[11px]">{{ statusText }}</span>
+        <span class="text-xs transition-transform duration-150" :class="isOpen ? 'rotate-90' : ''">›</span>
       </div>
     </div>
 
@@ -67,7 +69,7 @@ const emit = defineEmits<{
       </div>
 
       <div v-if="loading" class="py-3 text-pcl-subtext flex items-center justify-center gap-2">
-        <span class="animate-spin">⏳</span> {{ loadingText }}
+        <PclIcon name="refresh" :size="13" class="animate-spin text-pcl-primary" /> {{ loadingText }}
       </div>
 
       <div v-else-if="!supported || items.length === 0" class="py-3 text-pcl-subtext text-center">
@@ -78,21 +80,21 @@ const emit = defineEmits<{
         <div
           v-for="item in items"
           :key="item.version"
-          class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl cursor-pointer transition-colors"
+          class="flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors"
           :class="selectedVersion === item.version
-            ? 'bg-pcl-primary/20 text-pcl-primary font-bold border border-pcl-primary/30'
+            ? 'bg-pcl-primary/15 text-pcl-primary font-medium border border-pcl-primary/30'
             : 'hover:bg-black/5 dark:hover:bg-white/10 text-pcl-text'"
           @click="emit('select', item.version)"
         >
-          <div class="text-lg shrink-0 opacity-80">{{ itemIcon }}</div>
+          <div v-if="itemIcon" class="text-sm shrink-0 opacity-80">{{ itemIcon }}</div>
           <div class="flex flex-col flex-1 leading-tight">
-            <span class="text-xs font-bold font-mono">{{ item.version }}</span>
+            <span class="text-xs font-medium font-mono">{{ item.version }}</span>
             <span class="text-[10px] text-pcl-subtext mt-0.5">
               {{ item.description || (item.stable ? '稳定版' : '测试版') }}
             </span>
           </div>
-          <div v-if="selectedVersion === item.version" class="text-pcl-primary text-xs font-bold">
-            ✓
+          <div v-if="selectedVersion === item.version" class="text-pcl-primary text-xs">
+            <PclIcon name="check" :size="12" />
           </div>
         </div>
       </div>
