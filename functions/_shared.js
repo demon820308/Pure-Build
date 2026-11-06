@@ -12,17 +12,17 @@ export const SLUGS = {
   "linux-appimage": ".AppImage",
 };
 
-const DL = "https://github.com/demon820308/Pure-Build/releases/download/v0.1.6/";
+const DL = "https://github.com/demon820308/Pure-Build/releases/download/v0.1.7/";
 export const FALLBACK = {
-  version: "v0.1.6",
-  date_iso: "2026-11-04",
+  version: "v0.1.7",
+  date_iso: "2026-11-06",
   assets: {
-    "windows-setup": { name: "Pure.Build.Launcher_0.1.6_x64-setup.exe", size_mb: 5.3, url: DL + "Pure.Build.Launcher_0.1.6_x64-setup.exe" },
-    "windows-msi": { name: "Pure.Build.Launcher_0.1.6_x64_en-US.msi", size_mb: 7.2, url: DL + "Pure.Build.Launcher_0.1.6_x64_en-US.msi" },
-    "macos-dmg": { name: "Pure.Build.Launcher_0.1.6_universal.dmg", size_mb: 17.2, url: DL + "Pure.Build.Launcher_0.1.6_universal.dmg" },
-    "linux-deb": { name: "Pure.Build.Launcher_0.1.6_amd64.deb", size_mb: 7.6, url: DL + "Pure.Build.Launcher_0.1.6_amd64.deb" },
-    "linux-rpm": { name: "Pure.Build.Launcher-0.1.6-1.x86_64.rpm", size_mb: 7.6, url: DL + "Pure.Build.Launcher-0.1.6-1.x86_64.rpm" },
-    "linux-appimage": { name: "Pure.Build.Launcher_0.1.6_amd64.AppImage", size_mb: 82.0, url: DL + "Pure.Build.Launcher_0.1.6_amd64.AppImage" },
+    "windows-setup": { name: "Pure.Build.Launcher_0.1.7_x64-setup.exe", size_mb: 5.3, url: DL + "Pure.Build.Launcher_0.1.7_x64-setup.exe" },
+    "windows-msi": { name: "Pure.Build.Launcher_0.1.7_x64_en-US.msi", size_mb: 7.2, url: DL + "Pure.Build.Launcher_0.1.7_x64_en-US.msi" },
+    "macos-dmg": { name: "Pure.Build.Launcher_0.1.7_universal.dmg", size_mb: 17.2, url: DL + "Pure.Build.Launcher_0.1.7_universal.dmg" },
+    "linux-deb": { name: "Pure.Build.Launcher_0.1.7_amd64.deb", size_mb: 7.6, url: DL + "Pure.Build.Launcher_0.1.7_amd64.deb" },
+    "linux-rpm": { name: "Pure.Build.Launcher-0.1.7-1.x86_64.rpm", size_mb: 7.6, url: DL + "Pure.Build.Launcher-0.1.7-1.x86_64.rpm" },
+    "linux-appimage": { name: "Pure.Build.Launcher_0.1.7_amd64.AppImage", size_mb: 82.0, url: DL + "Pure.Build.Launcher_0.1.7_amd64.AppImage" },
   },
 };
 
