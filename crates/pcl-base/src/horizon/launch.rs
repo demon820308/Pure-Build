@@ -12,7 +12,7 @@ use crate::platform;
 use crate::reporter::{ProgressReporter, ReporterHandle};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 
 /// Horizon 启动选项参数载荷
@@ -136,7 +136,7 @@ pub fn launch_client_process(
         return Err(format!("找不到 horizon-client 可执行文件: {:?}", client_bin));
     }
 
-    let mut cmd = Command::new(client_bin);
+    let mut cmd = platform::background_command(client_bin);
     cmd.current_dir(instance_dir);
     cmd.args(args);
     cmd.stdin(Stdio::piped());

@@ -8,7 +8,6 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tar::Archive;
 use tokio::io::AsyncWriteExt;
 use ts_rs::TS;
@@ -131,7 +130,7 @@ impl JavaScanner {
 
     /// 执行 java -version 并提取版本与架构信息
     pub fn parse_java(path: &Path) -> Option<JavaInfo> {
-        let output = Command::new(path).arg("-version").output().ok()?;
+        let output = platform::background_command(path).arg("-version").output().ok()?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);

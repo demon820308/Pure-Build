@@ -1,6 +1,6 @@
+use crate::platform;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::process::Command;
 
 /// horizon-client --launch-api 响应数据契约
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,7 +96,7 @@ pub fn negotiate_client_api(bin_path: &Path) -> Result<ClientLaunchApi, String> 
     if !bin_path.exists() {
         return Err(format!("找不到 horizon-client 可执行文件: {:?}", bin_path));
     }
-    let output = Command::new(bin_path)
+    let output = platform::background_command(bin_path)
         .arg("--launch-api")
         .output()
         .map_err(|e| format!("执行 horizon-client --launch-api 失败: {}", e))?;
@@ -119,7 +119,7 @@ pub fn negotiate_prepare_api(bin_path: &Path) -> Result<PrepareLaunchApi, String
     if !bin_path.exists() {
         return Err(format!("找不到 horizon-prepare 可执行文件: {:?}", bin_path));
     }
-    let output = Command::new(bin_path)
+    let output = platform::background_command(bin_path)
         .arg("--launch-api")
         .output()
         .map_err(|e| format!("执行 horizon-prepare --launch-api 失败: {}", e))?;

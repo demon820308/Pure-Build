@@ -88,7 +88,7 @@ pub fn extract_optifine_installer(
                 });
 
             if let Some(java_exe) = java_bin {
-                if let Ok(out) = std::process::Command::new(&java_exe)
+                if let Ok(out) = crate::platform::background_command(&java_exe)
                     .arg("-cp")
                     .arg(&temp_installer)
                     .arg("optifine.Patcher")

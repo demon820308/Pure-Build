@@ -468,7 +468,7 @@ pub fn open_url(url: &str) -> Result<(), String> {
 pub fn kill_process(pid: u32) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("taskkill")
+        let output = background_command("taskkill")
             .args(["/F", "/PID", &pid.to_string()])
             .output()
             .map_err(|e| format!("终止进程失败: {}", e))?;
@@ -491,6 +491,19 @@ pub fn kill_process(pid: u32) -> Result<(), String> {
         }
         Ok(())
     }
+}
+
+/// 创建后台静默子进程命令：Windows 下附加 `CREATE_NO_WINDOW` 避免 GUI 主进程拉起控制台子程序时闪现或常驻终端窗口，其余平台等价于 `Command::new`
+pub fn background_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        // 0x08000000 = CREATE_NO_WINDOW：仅禁止分配控制台窗口，不影响子进程自行创建的 GUI 渲染窗口
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
 }
 
 /// 当前平台生成的开服脚本默认文件名
@@ -617,7 +630,7 @@ pub fn report_startup_error(err_msg: &str) {
             "Add-Type -AssemblyName PresentationFramework; [System.Windows.MessageBox]::Show('{}', 'Pure Build Launcher 启动错误', 'OK', 'Error') | Out-Null",
             escaped
         );
-        let _ = Command::new("powershell")
+        let _ = background_command("powershell")
             .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps_cmd])
             .status();
     }
@@ -792,6 +805,12 @@ mod tests {
         assert_eq!(horizon_prepare_bin_name_for("windows"), "horizon-prepare.exe");
         assert_eq!(horizon_prepare_bin_name_for("osx"), "horizon-prepare");
         assert_eq!(horizon_prepare_bin_name_for("linux"), "horizon-prepare");
+    }
+
+    #[test]
+    fn test_background_command_constructs_program() {
+        let cmd = background_command("example-tool");
+        assert_eq!(cmd.get_program(), "example-tool");
     }
 }
 

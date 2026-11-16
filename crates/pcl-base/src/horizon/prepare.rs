@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest as _, Sha1};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use ts_rs::TS;
 
 /// horizon-prepare --check 校验结果 DTO
@@ -96,7 +96,7 @@ pub fn run_prepare_check(prepare_bin: &Path, output_dir: &Path) -> Result<Horizo
     if !prepare_bin.exists() {
         return Err(format!("找不到 horizon-prepare 可执行文件: {:?}", prepare_bin));
     }
-    let output = Command::new(prepare_bin)
+    let output = platform::background_command(prepare_bin)
         .arg("--check")
         .arg("--output")
         .arg(output_dir)
@@ -213,7 +213,7 @@ pub fn execute_prepare(
     args: &[String],
     tag: &str,
 ) -> Result<(), String> {
-    let mut cmd = Command::new(prepare_bin);
+    let mut cmd = platform::background_command(prepare_bin);
     cmd.args(args);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());

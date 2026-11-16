@@ -5,7 +5,7 @@ use crate::crash::CrashAnalyzer;
 use crate::platform;
 use crate::reporter::ReporterHandle;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 /// 执行拉起游戏进程 (带正版/离线身份，解压当前平台 natives，并异步监控崩溃日志)
 pub async fn launch_with_auth(
@@ -103,7 +103,7 @@ pub async fn launch_with_auth(
     // 5. 启动实际进程
     emit_progress("正在合成启动参数并唤醒 Java 进程...", 85.0, None, false, None);
 
-    let mut cmd = Command::new(&effective_java_str);
+    let mut cmd = platform::background_command(&effective_java_str);
     cmd.current_dir(&launch_args.effective_game_dir);
     cmd.args(&launch_args.jvm_args);
     cmd.arg(&launch_args.main_class);
