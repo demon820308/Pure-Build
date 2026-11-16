@@ -2,7 +2,7 @@ use pcl_base::{
     endpoints, horizon, platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager,
     CrashAnalysisResult, DeviceCodeResponse, DownloadManager, DownloadProgress, EndpointPingResult,
     FabricMetaSummary, HorizonBuildItem, HorizonCheckResult, HorizonInstance, HorizonUpdateStatus,
-    JavaDownloader, JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager,
+    InstalledCommunitySnapshot, JavaDownloader, JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager,
     LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager,
     ModrinthProject, MusicTrack, PblBuildMeta, PlatformInfo, ProgressReporter, RemoteVersion,
     ReporterHandle, ResourceItem, ResourceScanner, SaveInfo, UserProfile, VersionInfo,
@@ -58,6 +58,13 @@ async fn get_minecraft_versions(game_dir: String) -> Vec<VersionInfo> {
     tauri::async_runtime::spawn_blocking(move || VersionScanner::scan_versions(&game_dir))
         .await
         .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn delete_minecraft_version(game_dir: String, version_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || VersionScanner::delete_version(&game_dir, &version_id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -497,6 +504,104 @@ fn open_horizon_instance_folder(
 }
 
 #[tauri::command]
+fn open_horizon_build_folder(tag: String, kind: String) -> Result<(), String> {
+    let clean_tag = horizon::validate_instance_name(&tag)?;
+    let subdir = match kind.as_str() {
+        "build" => "builds",
+        "resources" => "resources",
+        _ => return Err(format!("不支持的目录类型: {}", kind)),
+    };
+    let target = current_game_dir()
+        .join("horizon")
+        .join(subdir)
+        .join(clean_tag);
+    if !target.exists() {
+        return Err("目标目录尚未创建（请先安装构建或准备资源）".to_string());
+    }
+    platform::open_folder(&target)
+}
+
+#[tauri::command]
+async fn get_horizon_build_content_caps(tag: String) -> Result<Option<serde_json::Value>, String> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        horizon::get_installed_build_content_caps(&game_dir, &tag)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn fetch_horizon_mod_registry(
+    build_tag: Option<String>,
+    instance_name: Option<String>,
+    kind_filter: Option<String>,
+    query: Option<String>,
+    compatible_only: Option<bool>,
+    force_refresh: Option<bool>,
+) -> Result<Vec<horizon::HorizonModItem>, String> {
+    let game_dir = current_game_dir();
+    horizon::fetch_horizon_mod_registry(
+        &game_dir,
+        build_tag.as_deref(),
+        instance_name.as_deref(),
+        kind_filter.as_deref(),
+        query.as_deref(),
+        compatible_only.unwrap_or(true),
+        force_refresh.unwrap_or(false),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn get_installed_community_snapshot(
+    game_dir: String,
+    version_path: Option<String>,
+    project_type: String,
+) -> InstalledCommunitySnapshot {
+    tauri::async_runtime::spawn_blocking(move || {
+        CommunityManager::get_installed_snapshot(
+            std::path::Path::new(&game_dir),
+            version_path.as_deref(),
+            &project_type,
+        )
+    })
+    .await
+    .unwrap_or(InstalledCommunitySnapshot {
+        effective_dir: String::new(),
+        is_isolated: false,
+        project_ids: Vec::new(),
+        mod_ids: Vec::new(),
+        file_names: Vec::new(),
+    })
+}
+
+#[tauri::command]
+async fn install_horizon_registry_item(
+    app: AppHandle,
+    instance_name: String,
+    project_id: String,
+    kind: String,
+    file_name: String,
+    download_url: String,
+    expected_sha256: String,
+) -> Result<String, String> {
+    let game_dir = current_game_dir();
+    let reporter = make_reporter(app);
+    horizon::install_horizon_registry_item(
+        &reporter,
+        &game_dir,
+        &instance_name,
+        &project_id,
+        &kind,
+        &file_name,
+        &download_url,
+        &expected_sha256,
+    )
+    .await
+}
+
+#[tauri::command]
 async fn scan_lan_rooms() -> Result<Vec<LanRoomInfo>, String> {
     LinkManager::scan_lan_rooms(1500).await
 }
@@ -601,6 +706,7 @@ pub fn run() {
             get_platform_info,
             get_installed_java,
             get_minecraft_versions,
+            delete_minecraft_version,
             get_installed_mods,
             toggle_mod_state,
             toggle_instance_item,
@@ -624,6 +730,7 @@ pub fn run() {
             export_modpack,
             search_modrinth_resources,
             install_modrinth_resource,
+            get_installed_community_snapshot,
             get_microsoft_device_code,
             poll_microsoft_token,
             login_yggdrasil_account,
@@ -647,6 +754,10 @@ pub fn run() {
             launch_horizon,
             get_horizon_instance_saves,
             open_horizon_instance_folder,
+            open_horizon_build_folder,
+            get_horizon_build_content_caps,
+            fetch_horizon_mod_registry,
+            install_horizon_registry_item,
             scan_lan_rooms,
             broadcast_lan_room,
             decode_lan_invite_code,

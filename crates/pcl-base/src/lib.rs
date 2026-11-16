@@ -17,7 +17,7 @@ pub mod resource;
 pub mod version;
 
 pub use auth::{DeviceCodeResponse, MicrosoftAuth, UserProfile};
-pub use community::{CommunityManager, ModrinthProject};
+pub use community::{CommunityManager, InstalledCommunitySnapshot, ModrinthProject};
 pub use config::{AppConfig, ConfigManager};
 pub use crash::{CrashAnalysisResult, CrashAnalyzer};
 pub use download::{DownloadManager, FabricMetaSummary, LoaderVersionItem, RemoteVersion};

@@ -479,6 +479,7 @@ mod tests {
             ],
             exit_codes: vec![0, 1, 2, 101],
             crash_report_line: Some("Horizon: crash report saved to ".to_string()),
+            content: None,
         };
 
         let resources_dir = Path::new("/path/to/res");

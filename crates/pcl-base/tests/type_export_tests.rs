@@ -1,6 +1,8 @@
 use pcl_base::auth::{DeviceCodeResponse, UserProfile};
+use pcl_base::community::InstalledCommunitySnapshot;
 use pcl_base::horizon::{
-    HorizonBuildItem, HorizonCheckResult, HorizonInstance, HorizonUpdateStatus, PblBuildMeta,
+    HorizonBuildItem, HorizonCheckResult, HorizonInstance, HorizonModItem, HorizonRegistryFile,
+    HorizonRegistryVersion, HorizonUpdateStatus, PblBuildMeta,
 };
 use pcl_base::java::JavaInfo;
 use pcl_base::mods::ModInfo;
@@ -21,6 +23,10 @@ fn test_export_and_verify_typescript_types() {
     out.push_str(&format!("export {}\n\n", HorizonBuildItem::decl()));
     out.push_str(&format!("export {}\n\n", HorizonCheckResult::decl()));
     out.push_str(&format!("export {}\n\n", HorizonInstance::decl()));
+    out.push_str(&format!("export {}\n\n", HorizonRegistryFile::decl()));
+    out.push_str(&format!("export {}\n\n", HorizonRegistryVersion::decl()));
+    out.push_str(&format!("export {}\n\n", HorizonModItem::decl()));
+    out.push_str(&format!("export {}\n\n", InstalledCommunitySnapshot::decl()));
     out.push_str(&format!("export {}\n", HorizonUpdateStatus::decl()));
 
     let target_path = Path::new(env!("CARGO_MANIFEST_DIR"))

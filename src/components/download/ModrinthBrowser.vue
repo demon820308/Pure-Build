@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
-import type { ModrinthProject } from '@/services/backend'
+import type { InstalledCommunitySnapshot, ModrinthProject } from '@/services/backend'
 import MyButton from '@/components/base/MyButton.vue'
 import PclIcon from '@/components/base/PclIcon.vue'
 import InlineProgress from './InlineProgress.vue'
@@ -18,12 +18,80 @@ const isLoadingCommunity = ref(false)
 const communitySearchQuery = ref('')
 const selectedLoader = ref<'all' | 'fabric' | 'forge' | 'neoforge'>('all')
 const filterByCurrentVersion = ref(true)
+const selectedJavaVersionId = ref('')
+const installedSnapshot = ref<InstalledCommunitySnapshot | null>(null)
+
+const targetVersionObj = computed(
+  () => store.installedVersions.find((v) => v.id === selectedJavaVersionId.value) || null
+)
+
+const syncTargetVersion = () => {
+  if (
+    selectedJavaVersionId.value &&
+    store.installedVersions.some((v) => v.id === selectedJavaVersionId.value)
+  ) {
+    return
+  }
+  selectedJavaVersionId.value =
+    store.currentVersion?.id ||
+    store.installedVersions[0]?.id ||
+    ''
+}
+
+const normalizeKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+const refreshInstalledSnapshot = async () => {
+  if (!store.gameDir || props.section === 'modpack') {
+    installedSnapshot.value = null
+    return
+  }
+  try {
+    installedSnapshot.value = await backend.getInstalledCommunitySnapshot({
+      gameDir: store.gameDir,
+      versionPath: targetVersionObj.value?.path,
+      projectType: props.section,
+    })
+  } catch (e) {
+    console.warn('获取社区资源已安装快照失败:', e)
+  }
+}
+
+const installedNormalizedSet = computed(() => {
+  const snap = installedSnapshot.value
+  const set = new Set<string>()
+  if (!snap) return set
+  for (const id of snap.mod_ids) {
+    const n = normalizeKey(id)
+    if (n.length >= 3) set.add(n)
+  }
+  for (const fname of snap.file_names) {
+    const stem = fname.replace(/\.(jar|zip|disabled)$/gi, '')
+    const n = normalizeKey(stem)
+    if (n.length >= 3) set.add(n)
+  }
+  return set
+})
+
+const isCommunityInstalled = (proj: ModrinthProject): boolean => {
+  const snap = installedSnapshot.value
+  if (!snap || props.section === 'modpack') return false
+  if (snap.project_ids.includes(proj.project_id)) return true
+  const slugKey = normalizeKey(proj.slug)
+  const titleKey = normalizeKey(proj.title)
+  if (slugKey.length >= 3 && installedNormalizedSet.value.has(slugKey)) return true
+  if (titleKey.length >= 3 && installedNormalizedSet.value.has(titleKey)) return true
+  for (const localKey of installedNormalizedSet.value) {
+    if (slugKey.length >= 4 && localKey.startsWith(slugKey)) return true
+  }
+  return false
+}
 
 const searchCommunity = async () => {
+  syncTargetVersion()
   isLoadingCommunity.value = true
   try {
-    const targetVer = filterByCurrentVersion.value && store.currentVersion
-      ? store.currentVersion.id.replace(/-.*$/, '') // 提取如 1.21.4
+    const targetVer = filterByCurrentVersion.value && targetVersionObj.value
+      ? targetVersionObj.value.id.replace(/-.*$/, '') // 提取如 1.21.4
       : undefined
 
     const results = await backend.searchModrinthResources({
@@ -43,11 +111,29 @@ const searchCommunity = async () => {
 watch(
   [() => props.section, selectedLoader, filterByCurrentVersion],
   () => {
+    refreshInstalledSnapshot()
     searchCommunity()
   }
 )
 
+watch(selectedJavaVersionId, () => {
+  refreshInstalledSnapshot()
+  if (filterByCurrentVersion.value) {
+    searchCommunity()
+  }
+})
+
+watch(
+  () => store.installedVersions,
+  () => {
+    syncTargetVersion()
+    refreshInstalledSnapshot()
+  }
+)
+
 onMounted(() => {
+  syncTargetVersion()
+  refreshInstalledSnapshot()
   searchCommunity()
 })
 
@@ -62,9 +148,14 @@ const formatDownloads = (num: number) => {
 }
 
 const handleInstallCommunity = async (proj: ModrinthProject) => {
+  if (props.section !== 'modpack' && store.installedVersions.length === 0) {
+    alert('请先在「游戏版本」安装至少一个 Java 游戏版本后再安装社区资源！')
+    return
+  }
   try {
-    const targetVer = store.currentVersion ? store.currentVersion.id.replace(/-.*$/, '') : undefined
-    const targetLoader = store.currentVersion?.loader || 'fabric'
+    const activeTarget = targetVersionObj.value
+    const targetVer = activeTarget ? activeTarget.id.replace(/-.*$/, '') : undefined
+    const targetLoader = activeTarget?.loader || 'fabric'
 
     store.updateDownloadProgress({
       version_id: proj.project_id,
@@ -77,7 +168,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
 
     const msg = await backend.installModrinthResource({
       gameDir: store.gameDir,
-      versionPath: store.currentVersion?.path,
+      versionPath: activeTarget?.path,
       projectId: proj.project_id,
       projectType: props.section,
       gameVersion: targetVer,
@@ -85,6 +176,7 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
     })
 
     console.log(msg)
+    await refreshInstalledSnapshot()
   } catch (err: any) {
     alert(`安装失败: ${err}`)
     store.clearDownloadTask()
@@ -96,16 +188,33 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
   <div class="flex flex-col gap-3.5 flex-1 overflow-hidden">
     <div class="flex items-center justify-between gap-3 shrink-0 flex-wrap">
       <div class="flex items-center gap-2 shrink-0 flex-wrap">
+        <select
+          v-if="store.installedVersions.length > 0"
+          v-model="selectedJavaVersionId"
+          class="px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text outline-none max-w-[190px]"
+          title="选择社区资源要匹配及安装的 Java 目标版本"
+        >
+          <option v-for="v in store.installedVersions" :key="v.id" :value="v.id">
+            目标版本：{{ v.name }}
+          </option>
+        </select>
+
+        <span
+          v-if="section !== 'modpack' && targetVersionObj && installedSnapshot"
+          class="text-[11px] px-2 py-1 rounded-lg border shrink-0 whitespace-nowrap"
+          :class="
+            installedSnapshot.is_isolated
+              ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
+              : 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400'
+          "
+          :title="installedSnapshot.is_isolated ? `独立版本隔离目录：${installedSnapshot.effective_dir}` : `通用共享目录：${installedSnapshot.effective_dir}（所有未隔离 Java 版本共用该目录下的资源与模组）`"
+        >
+          {{ installedSnapshot.is_isolated ? '独立隔离目录' : '通用共享目录' }}
+        </span>
+
         <label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs text-pcl-text cursor-pointer hover:border-pcl-primary select-none whitespace-nowrap shrink-0">
           <input v-model="filterByCurrentVersion" type="checkbox" class="accent-[var(--pcl-color-primary)] cursor-pointer shrink-0" />
-          <span class="font-medium text-[11px] whitespace-nowrap">匹配当前版本</span>
-          <span
-            v-if="store.currentVersion"
-            class="text-[10px] text-pcl-subtext max-w-[110px] truncate font-mono"
-            :title="store.currentVersion.name"
-          >
-            ({{ store.currentVersion.name }})
-          </span>
+          <span class="font-medium text-[11px] whitespace-nowrap">匹配目标版本</span>
         </label>
 
         <div v-if="section === 'mod'" class="flex items-center p-1 rounded-xl bg-black/5 dark:bg-white/5 border border-pcl-border text-xs shrink-0 whitespace-nowrap">
@@ -191,8 +300,14 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
             </div>
 
             <div class="flex-1 min-w-0">
-              <div class="font-semibold text-sm text-pcl-text flex items-center gap-2">
+              <div class="font-semibold text-sm text-pcl-text flex items-center gap-2 flex-wrap">
                 <span class="truncate">{{ p.title }}</span>
+                <span
+                  v-if="isCommunityInstalled(p)"
+                  class="text-[10px] px-1.5 py-0.2 rounded font-medium bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5 shrink-0"
+                >
+                  <PclIcon name="check" :size="10" /> 已安装
+                </span>
                 <span class="text-[10px] text-pcl-subtext font-normal">by {{ p.author }}</span>
                 <span class="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-pcl-subtext font-mono">
                   {{ formatDownloads(p.downloads) }} 下载
@@ -227,11 +342,16 @@ const handleInstallCommunity = async (proj: ModrinthProject) => {
             <button
               v-else
               :disabled="store.isDownloading"
-              class="px-3.5 py-1.5 rounded-md text-xs font-medium cursor-pointer bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active text-white shadow-xs transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 flex items-center gap-1.5"
+              class="px-3.5 py-1.5 rounded-md text-xs font-medium cursor-pointer shadow-xs transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 flex items-center gap-1.5"
+              :class="
+                isCommunityInstalled(p)
+                  ? 'bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-pcl-text'
+                  : 'bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active text-white'
+              "
               @click="handleInstallCommunity(p)"
             >
-              <PclIcon name="download" :size="12" />
-              <span>安装到 {{ section === 'mod' ? 'Mods' : section === 'shader' ? 'Shaders' : 'Textures' }}</span>
+              <PclIcon :name="isCommunityInstalled(p) ? 'refresh' : 'download'" :size="12" />
+              <span>{{ isCommunityInstalled(p) ? '重新安装' : `安装到 ${section === 'mod' ? 'Mods' : section === 'shader' ? 'Shaders' : 'Textures'}` }}</span>
             </button>
           </div>
         </div>

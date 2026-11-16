@@ -11,7 +11,9 @@ import type {
   HorizonBuildItem,
   HorizonCheckResult,
   HorizonInstance,
+  HorizonModItem,
   HorizonUpdateStatus,
+  InstalledCommunitySnapshot,
 } from './types.generated'
 
 export type {
@@ -24,7 +26,9 @@ export type {
   HorizonBuildItem,
   HorizonCheckResult,
   HorizonInstance,
+  HorizonModItem,
   HorizonUpdateStatus,
+  InstalledCommunitySnapshot,
 }
 
 export interface PlatformInfo {
@@ -227,6 +231,18 @@ export const backend = {
     })
   },
 
+  async getInstalledCommunitySnapshot(params: {
+    gameDir: string
+    versionPath?: string
+    projectType: string
+  }): Promise<InstalledCommunitySnapshot> {
+    return await invoke<InstalledCommunitySnapshot>('get_installed_community_snapshot', {
+      gameDir: params.gameDir,
+      versionPath: params.versionPath ?? null,
+      projectType: params.projectType,
+    })
+  },
+
   async importModpack(params: {
     gameDir: string
     mrpackPath: string
@@ -285,6 +301,10 @@ export const backend = {
 
   async openFolder(folderPath: string): Promise<void> {
     await invoke('open_folder', { folderPath })
+  },
+
+  async deleteMinecraftVersion(gameDir: string, versionId: string): Promise<void> {
+    await invoke('delete_minecraft_version', { gameDir, versionId })
   },
 
   async openInstanceFolder(versionPath: string, gameDir: string, folderName: string): Promise<void> {
@@ -649,5 +669,49 @@ export const backend = {
 
   async openHorizonInstanceFolder(instanceName: string, folderName?: string): Promise<void> {
     await invoke('open_horizon_instance_folder', { instanceName, folderName: folderName ?? null })
+  },
+
+  async openHorizonBuildFolder(tag: string, kind: 'build' | 'resources'): Promise<void> {
+    await invoke('open_horizon_build_folder', { tag, kind })
+  },
+
+  async getHorizonBuildContentCaps(tag: string): Promise<Record<string, unknown> | null> {
+    return await invoke<Record<string, unknown> | null>('get_horizon_build_content_caps', { tag })
+  },
+
+  async fetchHorizonModRegistry(params: {
+    buildTag?: string
+    instanceName?: string
+    kindFilter?: string
+    query?: string
+    compatibleOnly?: boolean
+    forceRefresh?: boolean
+  }): Promise<HorizonModItem[]> {
+    return await invoke<HorizonModItem[]>('fetch_horizon_mod_registry', {
+      buildTag: params.buildTag ?? null,
+      instanceName: params.instanceName ?? null,
+      kindFilter: params.kindFilter ?? null,
+      query: params.query ?? null,
+      compatibleOnly: params.compatibleOnly ?? true,
+      forceRefresh: params.forceRefresh ?? false,
+    })
+  },
+
+  async installHorizonRegistryItem(params: {
+    instanceName: string
+    projectId: string
+    kind: string
+    fileName: string
+    downloadUrl: string
+    expectedSha256: string
+  }): Promise<string> {
+    return await invoke<string>('install_horizon_registry_item', {
+      instanceName: params.instanceName,
+      projectId: params.projectId,
+      kind: params.kind,
+      fileName: params.fileName,
+      downloadUrl: params.downloadUrl,
+      expectedSha256: params.expectedSha256,
+    })
   },
 }

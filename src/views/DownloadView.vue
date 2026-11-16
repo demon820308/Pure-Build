@@ -8,14 +8,32 @@ import PclIcon from '@/components/base/PclIcon.vue'
 
 import GameVersionCenter from '@/components/download/GameVersionCenter.vue'
 import HorizonDownloadCenter from '@/components/download/HorizonDownloadCenter.vue'
+import HorizonContentPanel from '@/components/download/HorizonContentPanel.vue'
 import InstallConfigPanel from '@/components/download/InstallConfigPanel.vue'
 import ModrinthBrowser from '@/components/download/ModrinthBrowser.vue'
 import ChangelogModal from '@/components/download/ChangelogModal.vue'
 
 const store = useAppStore()
 
-const currentSection = ref<'game' | 'horizon' | 'mod' | 'modpack' | 'shader' | 'resourcepack'>('game')
+const currentPlatform = ref<'java' | 'horizon'>('java')
+const javaSection = ref<'game' | 'mod' | 'modpack' | 'shader' | 'resourcepack'>('game')
+const horizonSection = ref<'builds' | 'mod' | 'shader' | 'resourcepack' | 'native-mod'>('builds')
 const horizonCenterRef = ref<InstanceType<typeof HorizonDownloadCenter> | null>(null)
+const horizonContentRef = ref<InstanceType<typeof HorizonContentPanel> | null>(null)
+
+const selectJavaSection = (section: 'game' | 'mod' | 'modpack' | 'shader' | 'resourcepack') => {
+  currentPlatform.value = 'java'
+  javaSection.value = section
+  configuringVersion.value = null
+}
+
+const selectHorizonSection = (
+  section: 'builds' | 'mod' | 'shader' | 'resourcepack' | 'native-mod'
+) => {
+  currentPlatform.value = 'horizon'
+  horizonSection.value = section
+  configuringVersion.value = null
+}
 
 const versions = ref<RemoteVersion[]>([])
 const isLoadingVersions = ref(false)
@@ -81,60 +99,94 @@ onMounted(() => {
   <div class="h-full flex overflow-hidden relative" :class="store.uiStyle === 'classic' ? 'flex-row gap-0' : 'flex-col gap-3.5'">
     <div
       v-if="store.uiStyle === 'classic'"
-      class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
+      class="w-[156px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none overflow-y-auto"
     >
+      <div class="px-3.5 pb-1 text-[12px] font-medium text-[#737373] opacity-85">
+        原版 - Java
+      </div>
       <MyListItem
-        title="原版游戏"
+        title="游戏版本"
         icon="vanilla"
-        :checked="currentSection === 'game'"
+        :checked="currentPlatform === 'java' && javaSection === 'game'"
         action-title="刷新版本列表"
-        @click="currentSection = 'game'; configuringVersion = null"
+        @click="selectJavaSection('game')"
         @action="loadRemoteVersions"
       />
       <MyListItem
-        title="Horizon"
-        icon="launch"
-        :checked="currentSection === 'horizon'"
-        action-title="刷新 Horizon 构建"
-        @click="currentSection = 'horizon'; configuringVersion = null"
-        @action="horizonCenterRef?.loadBuilds()"
-      />
-
-      <div class="px-3.5 pt-5 pb-1 text-[12px] text-[#737373] opacity-80">
-        社区资源
-      </div>
-
-      <MyListItem
-        title="Mod"
+        title="社区 Mod"
         icon="mod"
-        :checked="currentSection === 'mod'"
+        :checked="currentPlatform === 'java' && javaSection === 'mod'"
         action-title="刷新 Mod 列表"
-        @click="currentSection = 'mod'"
+        @click="selectJavaSection('mod')"
         @action="modrinthBrowserRef?.searchCommunity"
       />
       <MyListItem
         title="整合包"
         icon="modpack"
-        :checked="currentSection === 'modpack'"
+        :checked="currentPlatform === 'java' && javaSection === 'modpack'"
         action-title="刷新整合包列表"
-        @click="currentSection = 'modpack'"
+        @click="selectJavaSection('modpack')"
         @action="modrinthBrowserRef?.searchCommunity"
       />
       <MyListItem
         title="资源包"
         icon="resourcepack"
-        :checked="currentSection === 'resourcepack'"
+        :checked="currentPlatform === 'java' && javaSection === 'resourcepack'"
         action-title="刷新资源包列表"
-        @click="currentSection = 'resourcepack'"
+        @click="selectJavaSection('resourcepack')"
         @action="modrinthBrowserRef?.searchCommunity"
       />
       <MyListItem
         title="光影包"
         icon="shader"
-        :checked="currentSection === 'shader'"
+        :checked="currentPlatform === 'java' && javaSection === 'shader'"
         action-title="刷新光影包列表"
-        @click="currentSection = 'shader'"
+        @click="selectJavaSection('shader')"
         @action="modrinthBrowserRef?.searchCommunity"
+      />
+
+      <div class="px-3.5 pt-5 pb-1 text-[12px] font-medium text-[#737373] opacity-85">
+        Horizon - Rust
+      </div>
+      <MyListItem
+        title="构建与资源"
+        icon="launch"
+        :checked="currentPlatform === 'horizon' && horizonSection === 'builds'"
+        action-title="刷新 Horizon 构建"
+        @click="selectHorizonSection('builds')"
+        @action="horizonCenterRef?.loadBuilds()"
+      />
+      <MyListItem
+        title="内容模组"
+        icon="mod"
+        :checked="currentPlatform === 'horizon' && horizonSection === 'mod'"
+        action-title="刷新内容模组"
+        @click="selectHorizonSection('mod')"
+        @action="horizonContentRef?.loadContentCaps()"
+      />
+      <MyListItem
+        title="光影包"
+        icon="shader"
+        :checked="currentPlatform === 'horizon' && horizonSection === 'shader'"
+        action-title="刷新 Horizon 光影包"
+        @click="selectHorizonSection('shader')"
+        @action="horizonContentRef?.loadContentCaps()"
+      />
+      <MyListItem
+        title="材质包"
+        icon="resourcepack"
+        :checked="currentPlatform === 'horizon' && horizonSection === 'resourcepack'"
+        action-title="刷新 Horizon 材质包"
+        @click="selectHorizonSection('resourcepack')"
+        @action="horizonContentRef?.loadContentCaps()"
+      />
+      <MyListItem
+        title="原生重编类"
+        icon="gear"
+        :checked="currentPlatform === 'horizon' && horizonSection === 'native-mod'"
+        action-title="刷新原生模组列表"
+        @click="selectHorizonSection('native-mod')"
+        @action="horizonContentRef?.loadContentCaps()"
       />
     </div>
 
@@ -144,31 +196,42 @@ onMounted(() => {
     >
       <div
         v-if="store.uiStyle === 'modern'"
-        class="flex items-center justify-between gap-3 shrink-0 pb-1 border-b border-pcl-border"
+        class="flex items-center justify-between gap-2.5 shrink-0 pb-1 border-b border-pcl-border flex-wrap"
       >
-        <div class="flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0 overflow-x-auto no-scrollbar">
+        <div class="flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0">
+          <button
+            class="px-3 py-1 rounded-md text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap shrink-0"
+            :class="currentPlatform === 'java' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="currentPlatform = 'java'; configuringVersion = null"
+          >
+            原版 - Java
+          </button>
+          <button
+            class="px-3 py-1 rounded-md text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap shrink-0"
+            :class="currentPlatform === 'horizon' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="currentPlatform = 'horizon'; configuringVersion = null"
+          >
+            Horizon - Rust
+          </button>
+        </div>
+
+        <div
+          v-if="currentPlatform === 'java'"
+          class="flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0 overflow-x-auto no-scrollbar"
+        >
           <button
             class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'game' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
-            @click="currentSection = 'game'"
+            :class="javaSection === 'game' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectJavaSection('game')"
           >
             <PclIcon name="vanilla" :size="13" />
-            <span>原版游戏</span>
+            <span>游戏版本</span>
           </button>
 
           <button
             class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'horizon' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
-            @click="currentSection = 'horizon'"
-          >
-            <PclIcon name="launch" :size="13" />
-            <span>Horizon</span>
-          </button>
-
-          <button
-            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'mod' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
-            @click="currentSection = 'mod'"
+            :class="javaSection === 'mod' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectJavaSection('mod')"
           >
             <PclIcon name="mod" :size="13" />
             <span>社区 Mod</span>
@@ -176,8 +239,8 @@ onMounted(() => {
 
           <button
             class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'modpack' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
-            @click="currentSection = 'modpack'"
+            :class="javaSection === 'modpack' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectJavaSection('modpack')"
           >
             <PclIcon name="modpack" :size="13" />
             <span>整合包</span>
@@ -185,8 +248,8 @@ onMounted(() => {
 
           <button
             class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'shader' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
-            @click="currentSection = 'shader'"
+            :class="javaSection === 'shader' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectJavaSection('shader')"
           >
             <PclIcon name="shader" :size="13" />
             <span>光影包</span>
@@ -194,63 +257,102 @@ onMounted(() => {
 
           <button
             class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
-            :class="currentSection === 'resourcepack' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
-            @click="currentSection = 'resourcepack'"
+            :class="javaSection === 'resourcepack' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectJavaSection('resourcepack')"
           >
             <PclIcon name="resourcepack" :size="13" />
             <span>材质包</span>
           </button>
         </div>
 
-        <div class="text-xs text-pcl-subtext flex items-center gap-2 shrink-0 whitespace-nowrap min-w-0">
-          <span
-            v-if="store.currentHorizonInstance"
-            class="px-2 py-0.5 rounded-md bg-pcl-primary/10 text-pcl-primary font-mono text-[11px] max-w-[150px] truncate shrink-0"
-            :title="`当前 Horizon 实例: ${store.currentHorizonInstance.name}`"
+        <div
+          v-else
+          class="flex items-center gap-1 p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border shrink-0 overflow-x-auto no-scrollbar"
+        >
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="horizonSection === 'builds' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectHorizonSection('builds')"
           >
-            Horizon · {{ store.currentHorizonInstance.name }}
-          </span>
-          <span
-            v-else-if="store.currentVersion"
-            class="px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 font-mono text-[11px] max-w-[150px] truncate shrink-0"
-            :title="`当前版本: ${store.currentVersion.name}`"
+            <PclIcon name="launch" :size="13" />
+            <span>构建与资源</span>
+          </button>
+
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="horizonSection === 'mod' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectHorizonSection('mod')"
           >
-            {{ store.currentVersion.name }}
-          </span>
-          <span class="text-emerald-500 flex items-center gap-1.5 text-[11px] whitespace-nowrap shrink-0 font-medium">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-            <span>镜像在线</span>
-          </span>
+            <PclIcon name="mod" :size="13" />
+            <span>内容模组</span>
+          </button>
+
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="horizonSection === 'shader' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectHorizonSection('shader')"
+          >
+            <PclIcon name="shader" :size="13" />
+            <span>光影包</span>
+          </button>
+
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="horizonSection === 'resourcepack' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectHorizonSection('resourcepack')"
+          >
+            <PclIcon name="resourcepack" :size="13" />
+            <span>材质包</span>
+          </button>
+
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="horizonSection === 'native-mod' ? 'bg-pcl-card text-pcl-text shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="selectHorizonSection('native-mod')"
+          >
+            <PclIcon name="gear" :size="13" />
+            <span>原生重编类</span>
+          </button>
         </div>
       </div>
 
-      <template v-if="currentSection === 'game'">
-        <InstallConfigPanel
-          v-if="configuringVersion"
-          :version="configuringVersion"
-          @close="configuringVersion = null"
-          @start-install="handleStartInstall"
-        />
-        <GameVersionCenter
+      <template v-if="currentPlatform === 'java'">
+        <template v-if="javaSection === 'game'">
+          <InstallConfigPanel
+            v-if="configuringVersion"
+            :version="configuringVersion"
+            @close="configuringVersion = null"
+            @start-install="handleStartInstall"
+          />
+          <GameVersionCenter
+            v-else
+            :versions="versions"
+            :is-loading="isLoadingVersions"
+            @refresh="loadRemoteVersions"
+            @configure="openVersionConfig"
+            @show-changelog="(v) => changelogModalVersion = v"
+          />
+        </template>
+
+        <ModrinthBrowser
           v-else
-          :versions="versions"
-          :is-loading="isLoadingVersions"
-          @refresh="loadRemoteVersions"
-          @configure="openVersionConfig"
-          @show-changelog="(v) => changelogModalVersion = v"
+          ref="modrinthBrowserRef"
+          :section="javaSection"
         />
       </template>
 
-      <HorizonDownloadCenter
-        v-else-if="currentSection === 'horizon'"
-        ref="horizonCenterRef"
-      />
-
-      <ModrinthBrowser
-        v-else
-        ref="modrinthBrowserRef"
-        :section="currentSection"
-      />
+      <template v-else>
+        <HorizonDownloadCenter
+          v-if="horizonSection === 'builds'"
+          ref="horizonCenterRef"
+        />
+        <HorizonContentPanel
+          v-else
+          ref="horizonContentRef"
+          :kind="horizonSection"
+          @go-builds="selectHorizonSection('builds')"
+        />
+      </template>
 
       <ChangelogModal
         v-if="changelogModalVersion"

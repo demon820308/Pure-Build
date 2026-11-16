@@ -14,6 +14,8 @@ pub struct ClientLaunchApi {
     pub exit_codes: Vec<i32>,
     #[serde(default)]
     pub crash_report_line: Option<String>,
+    #[serde(default)]
+    pub content: Option<serde_json::Value>,
 }
 
 impl ClientLaunchApi {

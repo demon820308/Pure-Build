@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
 import type { RemoteVersion } from '@/services/backend'
@@ -23,6 +23,30 @@ const store = useAppStore()
 
 const filterType = ref<'all' | 'release' | 'snapshot' | 'installed'>('release')
 const searchQuery = ref('')
+const openMenuId = ref<string | null>(null)
+const deletingVersionId = ref<string | null>(null)
+
+const closeMenu = () => {
+  openMenuId.value = null
+}
+
+const toggleMenu = (vId: string) => {
+  openMenuId.value = openMenuId.value === vId ? null : vId
+}
+
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') closeMenu()
+}
+
+onMounted(() => {
+  window.addEventListener('click', closeMenu)
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeMenu)
+  window.removeEventListener('keydown', handleKeydown)
+})
 
 const isVersionDownloading = (vId: string) => {
   const task = store.downloadTask
@@ -35,16 +59,17 @@ const isVersionDownloading = (vId: string) => {
   )
 }
 
-const isInstalled = (versionId: string) => {
-  return store.installedVersions.some(
-    (iv) => iv.id === versionId || iv.name === versionId || iv.id.startsWith(versionId)
+const getInstalledObj = (versionId: string) => {
+  return (
+    store.installedVersions.find((iv) => iv.id === versionId || iv.name === versionId) ||
+    store.installedVersions.find(
+      (iv) => iv.id.startsWith(`${versionId}-`) || iv.id.startsWith(`${versionId} `)
+    )
   )
 }
 
-const getInstalledObj = (versionId: string) => {
-  return store.installedVersions.find(
-    (iv) => iv.id === versionId || iv.name === versionId || iv.id.startsWith(versionId)
-  )
+const isInstalled = (versionId: string) => {
+  return !!getInstalledObj(versionId)
 }
 
 const installedCount = computed(() => {
@@ -54,7 +79,7 @@ const installedCount = computed(() => {
 const goToLaunch = (versionId: string) => {
   const target = getInstalledObj(versionId)
   if (target) {
-    store.currentVersion = target
+    store.setCurrentVersion(target)
   }
   store.currentTab = 'launch'
 }
@@ -147,6 +172,48 @@ const handleDownloadServer = async (v: RemoteVersion) => {
     store.clearDownloadTask()
   }
 }
+
+const handleOpenVersionFolder = async (versionId: string) => {
+  closeMenu()
+  const target = getInstalledObj(versionId)
+  if (!target) return
+  try {
+    await backend.openFolder(target.path)
+  } catch (err: any) {
+    alert(`打开版本目录失败: ${err}`)
+  }
+}
+
+const handleDeleteVersion = async (v: RemoteVersion) => {
+  closeMenu()
+  const target = getInstalledObj(v.id)
+  if (!target) return
+  if (store.runningPid && store.currentVersion?.id === target.id) {
+    alert('当前版本正在运行中，请先退出游戏后再删除。')
+    return
+  }
+  const indieTip = target.has_indie
+    ? '\n注意：该版本已启用独立版本隔离，目录内的存档与配置也会一并清除。'
+    : ''
+  if (
+    !confirm(
+      `确定删除本地版本「${target.id}」吗？\n\n将仅删除 versions 目录下的该版本文件夹（不会影响公共资源库与 Horizon 已准备资源）。${indieTip}`
+    )
+  ) {
+    return
+  }
+
+  deletingVersionId.value = v.id
+  try {
+    await backend.deleteMinecraftVersion(store.gameDir, target.id)
+    await store.refreshInstalledVersions()
+    store.showNotification(`已删除版本 ${target.id}`)
+  } catch (err: any) {
+    alert(`删除版本失败: ${err}`)
+  } finally {
+    deletingVersionId.value = null
+  }
+}
 </script>
 
 <template>
@@ -203,7 +270,7 @@ const handleDownloadServer = async (v: RemoteVersion) => {
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto pr-1 space-y-2">
+    <div class="flex-1 overflow-y-auto pr-1 pb-24 space-y-2">
       <div v-if="isLoading && versions.length === 0" class="h-64 flex flex-col items-center justify-center text-pcl-subtext text-xs gap-3">
         <PclIcon name="refresh" :size="24" class="animate-spin text-pcl-primary" />
         <span>正在拉取官方版本清单...</span>
@@ -212,8 +279,9 @@ const handleDownloadServer = async (v: RemoteVersion) => {
       <div
         v-for="v in filteredVersions"
         :key="v.id"
-        class="flex flex-col p-3 rounded-xl border transition-colors"
+        class="relative flex flex-col p-3 rounded-xl border transition-colors"
         :class="[
+          openMenuId === v.id ? 'z-30' : 'z-0',
           isVersionDownloading(v.id)
             ? 'border-pcl-primary/60 bg-pcl-primary/5'
             : 'border-pcl-border bg-pcl-card shadow-xs'
@@ -249,31 +317,7 @@ const handleDownloadServer = async (v: RemoteVersion) => {
             </div>
           </div>
 
-          <div class="shrink-0 ml-4 flex items-center gap-2">
-            <div class="flex items-center gap-1 mr-1">
-              <button
-                class="px-2 py-1 rounded-md text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
-                title="另存为（将该版本与依赖库下载导出到独立文件夹）"
-                @click.stop="handleSaveAs(v)"
-              >
-                另存为
-              </button>
-              <button
-                class="p-1.5 rounded-md text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
-                title="更新日志（查看官方版本更新说明）"
-                @click.stop="emit('showChangelog', v)"
-              >
-                <PclIcon name="info" :size="13" />
-              </button>
-              <button
-                class="px-2 py-1 rounded-md text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors cursor-pointer text-xs"
-                title="下载服务端（一键下载官方 server.jar 并生成开服脚本）"
-                @click.stop="handleDownloadServer(v)"
-              >
-                服务端
-              </button>
-            </div>
-
+          <div class="shrink-0 ml-4 flex items-center gap-1.5 relative">
             <div
               v-if="isVersionDownloading(v.id) && store.downloadTask"
               class="flex items-center gap-2 text-xs font-medium text-pcl-primary px-3 py-1.5 rounded-md bg-pcl-primary/10"
@@ -289,25 +333,94 @@ const handleDownloadServer = async (v: RemoteVersion) => {
                 <PclIcon name="launch" :size="12" />
                 <span>启动</span>
               </button>
-              <button
-                :disabled="store.isDownloading"
-                class="p-1.5 rounded-md text-xs text-pcl-subtext hover:text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50 cursor-pointer"
-                title="重新配置并安装此版本"
+              <MyButton
+                type="secondary"
+                size="small"
+                :disabled="store.isDownloading || deletingVersionId === v.id"
+                title="重新配置、修复文件或加装模组加载器"
                 @click="emit('configure', v)"
               >
-                <PclIcon name="refresh" :size="12" />
-              </button>
+                <PclIcon name="gear" :size="12" />
+                <span>配置</span>
+              </MyButton>
             </template>
             <template v-else>
-              <button
+              <MyButton
+                type="primary"
+                size="small"
                 :disabled="store.isDownloading"
-                class="px-3.5 py-1.5 rounded-md text-xs font-medium cursor-pointer bg-pcl-primary hover:bg-pcl-hover text-white shadow-xs transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 @click="emit('configure', v)"
               >
                 <PclIcon name="download" :size="12" />
                 <span>安装</span>
-              </button>
+              </MyButton>
+              <MyButton
+                type="secondary"
+                size="small"
+                title="查看官方版本更新日志"
+                @click="emit('showChangelog', v)"
+              >
+                <span>更新日志</span>
+              </MyButton>
             </template>
+
+            <MyButton
+              v-if="!isVersionDownloading(v.id)"
+              type="secondary"
+              size="small"
+              :loading="deletingVersionId === v.id"
+              title="更多操作"
+              @click.stop="toggleMenu(v.id)"
+            >
+              <span>⋯</span>
+            </MyButton>
+
+            <div
+              v-if="openMenuId === v.id"
+              class="absolute right-0 top-full mt-1.5 w-44 rounded-lg border border-pcl-border bg-pcl-card shadow-lg py-1 text-xs z-40"
+              @click.stop
+            >
+              <button
+                v-if="isInstalled(v.id)"
+                class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                @click="closeMenu(); emit('showChangelog', v)"
+              >
+                <PclIcon name="info" :size="12" class="text-pcl-subtext" />
+                <span>更新日志</span>
+              </button>
+              <button
+                v-if="isInstalled(v.id)"
+                class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                @click="handleOpenVersionFolder(v.id)"
+              >
+                <PclIcon name="folder" :size="12" class="text-pcl-subtext" />
+                <span>打开版本目录</span>
+              </button>
+              <button
+                class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                @click="closeMenu(); handleSaveAs(v)"
+              >
+                <PclIcon name="download" :size="12" class="text-pcl-subtext" />
+                <span>另存为独立版本...</span>
+              </button>
+              <button
+                class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                @click="closeMenu(); handleDownloadServer(v)"
+              >
+                <PclIcon name="instance" :size="12" class="text-pcl-subtext" />
+                <span>下载服务端...</span>
+              </button>
+              <template v-if="isInstalled(v.id)">
+                <div class="my-1 border-t border-pcl-border" />
+                <button
+                  class="w-full px-3 py-1.5 text-left text-red-500 hover:bg-red-500/10 flex items-center gap-2 font-medium cursor-pointer"
+                  @click="handleDeleteVersion(v)"
+                >
+                  <PclIcon name="close" :size="12" />
+                  <span>删除此版本...</span>
+                </button>
+              </template>
+            </div>
           </div>
         </div>
 

@@ -1,11 +1,26 @@
 use crate::config::ConfigManager;
 use crate::endpoints;
 use crate::installer::DownloadProgress;
+use crate::mods::ModScanner;
 use crate::reporter::ReporterHandle;
+use crate::resource::ResourceScanner;
+use crate::version::{is_version_isolated, resolve_game_dir};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use ts_rs::TS;
+
+const MODRINTH_MANIFEST_FILE: &str = ".pcl_modrinth_installed.json";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+pub struct InstalledCommunitySnapshot {
+    pub effective_dir: String,
+    pub is_isolated: bool,
+    pub project_ids: Vec<String>,
+    pub mod_ids: Vec<String>,
+    pub file_names: Vec<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModrinthProject {
@@ -241,17 +256,11 @@ impl CommunityManager {
             .and_then(|n| n.to_str())
             .ok_or_else(|| "非法的文件名".to_string())?;
 
-        let base_dir = if let Some(vp) = version_path_str {
-            crate::version::resolve_game_dir(&game_dir_str, vp)
-        } else {
-            Path::new(&game_dir_str).to_path_buf()
-        };
-
-        let target_folder = match project_type.as_str() {
-            "shader" => base_dir.join("shaderpacks"),
-            "resourcepack" => base_dir.join("resourcepacks"),
-            _ => base_dir.join("mods"),
-        };
+        let (base_dir, target_folder, _) = resolve_community_target_folder(
+            Path::new(&game_dir_str),
+            version_path_str.as_deref(),
+            &project_type,
+        );
 
         if !target_folder.exists() {
             fs::create_dir_all(&target_folder)
@@ -309,7 +318,165 @@ impl CommunityManager {
             e
         })?;
 
+        record_modrinth_install(&base_dir, &project_type, &project_id, safe_filename);
+
         emit_progress("安装完成！", 100.0, "完成", true, None);
         Ok(format!("已成功安装到 {:?}", dest_path))
+    }
+
+    /// 扫描指定 Java 目标版本实际有效目录（兼容共享目录与独立隔离目录）的社区资源安装快照
+    pub fn get_installed_snapshot(
+        game_dir: &Path,
+        version_path: Option<&str>,
+        project_type: &str,
+    ) -> InstalledCommunitySnapshot {
+        let (base_dir, target_folder, is_isolated) =
+            resolve_community_target_folder(game_dir, version_path, project_type);
+
+        let mut project_ids = Vec::new();
+        let manifest_path = base_dir.join(MODRINTH_MANIFEST_FILE);
+        if let Ok(text) = fs::read_to_string(&manifest_path) {
+            if let Ok(map) = serde_json::from_str::<HashMap<String, HashMap<String, String>>>(&text)
+            {
+                if let Some(entries) = map.get(project_type) {
+                    for (pid, fname) in entries {
+                        if target_folder.join(fname).is_file() {
+                            project_ids.push(pid.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let vp_ref = version_path.map(Path::new).unwrap_or(game_dir);
+        let mut mod_ids = Vec::new();
+        let mut file_names = Vec::new();
+        match project_type {
+            "mod" => {
+                for m in ModScanner::scan_mods(vp_ref, game_dir) {
+                    if !m.mod_id.is_empty() {
+                        mod_ids.push(m.mod_id);
+                    }
+                    if !m.name.is_empty() {
+                        mod_ids.push(m.name);
+                    }
+                    file_names.push(m.file_name);
+                }
+            }
+            "shader" => {
+                for item in ResourceScanner::scan_folder(vp_ref, game_dir, "shaderpacks") {
+                    file_names.push(item.file_name);
+                    file_names.push(item.name);
+                }
+            }
+            "resourcepack" => {
+                for item in ResourceScanner::scan_folder(vp_ref, game_dir, "resourcepacks") {
+                    file_names.push(item.file_name);
+                    file_names.push(item.name);
+                }
+            }
+            _ => {}
+        }
+
+        InstalledCommunitySnapshot {
+            effective_dir: base_dir.to_string_lossy().to_string(),
+            is_isolated,
+            project_ids,
+            mod_ids,
+            file_names,
+        }
+    }
+}
+
+fn resolve_community_target_folder(
+    game_dir: &Path,
+    version_path: Option<&str>,
+    project_type: &str,
+) -> (PathBuf, PathBuf, bool) {
+    let (base_dir, is_isolated) = match version_path.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(vp) => (resolve_game_dir(game_dir, Path::new(vp)), is_version_isolated(vp)),
+        None => (game_dir.to_path_buf(), false),
+    };
+    let folder = match project_type {
+        "shader" => "shaderpacks",
+        "resourcepack" => "resourcepacks",
+        _ => "mods",
+    };
+    let target_folder = base_dir.join(folder);
+    (base_dir, target_folder, is_isolated)
+}
+
+fn record_modrinth_install(base_dir: &Path, project_type: &str, project_id: &str, filename: &str) {
+    let manifest_path = base_dir.join(MODRINTH_MANIFEST_FILE);
+    let mut map: HashMap<String, HashMap<String, String>> = fs::read_to_string(&manifest_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    map.entry(project_type.to_string())
+        .or_default()
+        .insert(project_id.to_string(), filename.to_string());
+
+    if let Ok(json) = serde_json::to_string_pretty(&map) {
+        let _ = fs::write(manifest_path, json);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_community_snapshot_shared_vs_isolated_and_file_removal() {
+        let base = std::env::temp_dir().join(format!("pcl_comm_snap_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let game_dir = base.join(".minecraft");
+        let shared_v1 = game_dir.join("versions").join("1.20.1-Fabric");
+        let shared_v2 = game_dir.join("versions").join("1.21.4-Fabric");
+        let isolated_v = game_dir.join("versions").join("1.21.1-Isolated");
+
+        fs::create_dir_all(&shared_v1).unwrap();
+        fs::create_dir_all(&shared_v2).unwrap();
+        fs::create_dir_all(isolated_v.join("saves")).unwrap();
+        fs::create_dir_all(game_dir.join("shaderpacks")).unwrap();
+        fs::create_dir_all(isolated_v.join("shaderpacks")).unwrap();
+
+        fs::write(game_dir.join("shaderpacks").join("Complementary.zip"), "zip").unwrap();
+        record_modrinth_install(&game_dir, "shader", "complementary-id", "Complementary.zip");
+
+        let snap1 = CommunityManager::get_installed_snapshot(
+            &game_dir,
+            shared_v1.to_str(),
+            "shader",
+        );
+        let snap2 = CommunityManager::get_installed_snapshot(
+            &game_dir,
+            shared_v2.to_str(),
+            "shader",
+        );
+        assert!(!snap1.is_isolated);
+        assert!(!snap2.is_isolated);
+        assert_eq!(snap1.effective_dir, snap2.effective_dir);
+        assert!(snap1.project_ids.contains(&"complementary-id".to_string()));
+        assert!(snap2.project_ids.contains(&"complementary-id".to_string()));
+
+        let snap_iso = CommunityManager::get_installed_snapshot(
+            &game_dir,
+            isolated_v.to_str(),
+            "shader",
+        );
+        assert!(snap_iso.is_isolated);
+        assert!(snap_iso.project_ids.is_empty());
+
+        // 磁盘文件被删除后，即使登记文件仍在也应判定为未安装
+        fs::remove_file(game_dir.join("shaderpacks").join("Complementary.zip")).unwrap();
+        let snap_after_del = CommunityManager::get_installed_snapshot(
+            &game_dir,
+            shared_v1.to_str(),
+            "shader",
+        );
+        assert!(snap_after_del.project_ids.is_empty());
+
+        let _ = fs::remove_dir_all(&base);
     }
 }

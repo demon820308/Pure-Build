@@ -18,4 +18,12 @@ export type HorizonCheckResult = { is_ready: boolean, gaps: Array<string>, error
 
 export type HorizonInstance = { name: string, build_tag: string, created_at: string, };
 
+export type HorizonRegistryFile = { name: string, url: string, size: number, sha256: string, };
+
+export type HorizonRegistryVersion = { version: string, published: string, api: string, game: string, file: HorizonRegistryFile, };
+
+export type HorizonModItem = { id: string, kind: string, name: string, summary: string, authors: Array<string>, icon: string | null, categories: Array<string>, downloads: number, latest_version: HorizonRegistryVersion | null, compatible: boolean, compatibility_reason: string | null, installable: boolean, is_installed: boolean, };
+
+export type InstalledCommunitySnapshot = { effective_dir: string, is_isolated: boolean, project_ids: Array<string>, mod_ids: Array<string>, file_names: Array<string>, };
+
 export type HorizonUpdateStatus = { has_update: boolean, latest_tag: string | null, latest_published_at: string | null, message: string | null, };

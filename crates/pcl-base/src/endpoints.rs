@@ -495,6 +495,12 @@ pub const HORIZON_RELEASES_ATOM_URL: &str =
 /// Horizon 默认构建渠道 Tag (Nightly)
 pub const HORIZON_NIGHTLY_TAG: &str = "nightly";
 
+/// Horizon 官方模组/光影/材质索引地址（playhorizon.dev/mods 背后数据源）
+pub const HORIZON_MOD_INDEX_URL: &str = "https://horizon-rust.github.io/horizon-mods/index.json";
+
+/// Horizon 官方模组索引本地缓存有效时长（秒）
+pub const HORIZON_MOD_INDEX_CACHE_TTL_SECS: u64 = 600;
+
 /// 构造指定 Tag 的 GitHub 资产列表页面片段端点（用于免 API 限流探测资产与发布时间）
 pub fn horizon_expanded_assets_url(tag: &str) -> String {
     format!(

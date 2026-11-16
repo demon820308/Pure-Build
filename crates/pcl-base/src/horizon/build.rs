@@ -732,6 +732,19 @@ pub fn delete_installed_build(game_dir: &Path, tag: &str) -> Result<(), String> 
     Ok(())
 }
 
+/// 读取指定已安装构建经 `--launch-api` 协商返回的 `content` 生态能力声明
+pub fn get_installed_build_content_caps(
+    game_dir: &Path,
+    tag: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    let clean_tag = crate::horizon::validate_instance_name(tag)?;
+    let build_dir = game_dir.join("horizon").join("builds").join(clean_tag);
+    let build_root = resolve_build_root(&build_dir);
+    let client_bin = build_root.join(platform::horizon_client_bin_name());
+    let api = negotiate_client_api(&client_bin)?;
+    Ok(api.content)
+}
+
 /// 下载指定 URL 内容为字符串
 async fn fetch_string(client: &Client, url: &str) -> Result<String, String> {
     let resp = client
@@ -1081,6 +1094,7 @@ mod tests {
             options: vec![],
             exit_codes: vec![0],
             crash_report_line: None,
+            content: None,
         };
         let valid_prepare = PrepareLaunchApi {
             launch_api: "0.1.1".to_string(),

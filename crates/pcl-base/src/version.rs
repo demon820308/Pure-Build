@@ -146,6 +146,40 @@ impl VersionScanner {
             java_version,
         })
     }
+
+    /// 安全删除指定版本目录（仅删除 `<game_dir>/versions/<version_id>`，禁止路径穿越，不触碰公共资源库与 Horizon 数据）
+    pub fn delete_version<P: AsRef<Path>>(game_dir: P, version_id: &str) -> Result<(), String> {
+        let trimmed = version_id.trim();
+        let mut comps = Path::new(trimmed).components();
+        match (comps.next(), comps.next()) {
+            (Some(std::path::Component::Normal(_)), None) => {}
+            _ => return Err(format!("非法版本标识: {}", version_id)),
+        }
+        // 同时拒绝两种路径分隔符，避免跨风格相对路径绕过单组件校验
+        if trimmed.chars().any(|c| std::path::is_separator(c) || c == '/' || c == '\\') {
+            return Err(format!("非法版本标识: {}", version_id));
+        }
+
+        let versions_dir = game_dir.as_ref().join("versions");
+        let target_dir = versions_dir.join(trimmed);
+        if !target_dir.exists() {
+            return Err(format!("版本目录不存在: {}", target_dir.display()));
+        }
+        if !target_dir.is_dir() {
+            return Err(format!("目标不是有效版本目录: {}", target_dir.display()));
+        }
+
+        let canon_versions = fs::canonicalize(&versions_dir)
+            .map_err(|e| format!("无法解析 versions 目录: {}", e))?;
+        let canon_target = fs::canonicalize(&target_dir)
+            .map_err(|e| format!("无法解析版本目录: {}", e))?;
+        if canon_target.parent() != Some(canon_versions.as_path()) {
+            return Err(format!("拒绝删除 versions 目录之外的路径: {}", target_dir.display()));
+        }
+
+        fs::remove_dir_all(&canon_target)
+            .map_err(|e| format!("删除版本目录失败（请确认游戏未在运行或文件未被占用）: {}", e))
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +251,37 @@ mod tests {
 
         let old_item = scanned.iter().find(|v| v.id == "1.12.2").unwrap();
         assert_eq!(old_item.java_version, Some(8));
+
+        let _ = fs::remove_dir_all(&base_temp);
+    }
+
+    #[test]
+    fn test_delete_version_removes_only_target_and_rejects_traversal() {
+        let base_temp = std::env::temp_dir().join(format!("pcl_delete_ver_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base_temp);
+        let game_dir = base_temp.join(".minecraft");
+        let target = game_dir.join("versions").join("26.3");
+        let sibling = game_dir.join("versions").join("1.20.1");
+        let libs = game_dir.join("libraries");
+
+        fs::create_dir_all(&target).unwrap();
+        fs::create_dir_all(&sibling).unwrap();
+        fs::create_dir_all(&libs).unwrap();
+        fs::write(target.join("26.3.json"), "{}").unwrap();
+        fs::write(sibling.join("1.20.1.json"), "{}").unwrap();
+        fs::write(libs.join("keep.jar"), "ok").unwrap();
+
+        assert!(VersionScanner::delete_version(&game_dir, "").is_err());
+        assert!(VersionScanner::delete_version(&game_dir, "..").is_err());
+        assert!(VersionScanner::delete_version(&game_dir, "../libraries").is_err());
+        assert!(VersionScanner::delete_version(&game_dir, "a/b").is_err());
+        assert!(VersionScanner::delete_version(&game_dir, "missing").is_err());
+        assert!(libs.join("keep.jar").exists());
+
+        VersionScanner::delete_version(&game_dir, "26.3").unwrap();
+        assert!(!target.exists());
+        assert!(sibling.join("1.20.1.json").exists());
+        assert!(libs.join("keep.jar").exists());
 
         let _ = fs::remove_dir_all(&base_temp);
     }

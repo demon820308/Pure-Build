@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
 import type { HorizonBuildItem, HorizonCheckResult } from '@/services/backend'
@@ -20,6 +20,35 @@ const installingTag = ref<string | null>(null)
 const creatingForTag = ref<string | null>(null)
 const newInstanceName = ref('')
 const isCreatingInstance = ref(false)
+const openMenuTag = ref<string | null>(null)
+const deletingTag = ref<string | null>(null)
+
+const closeMenu = () => {
+  openMenuTag.value = null
+}
+
+const toggleMenu = (tag: string) => {
+  openMenuTag.value = openMenuTag.value === tag ? null : tag
+}
+
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') closeMenu()
+}
+
+const getBoundInstances = (tag: string) => {
+  return store.horizonInstances.filter((inst) => inst.build_tag === tag)
+}
+
+const isResourceReady = (tag: string) => {
+  return !!checkMap.value[tag]?.is_ready
+}
+
+const hasPreparedResourcesDir = (tag: string) => {
+  const chk = checkMap.value[tag]
+  if (!chk) return false
+  if (chk.is_ready) return true
+  return !(chk.gaps.length === 1 && chk.gaps[0] === '资源尚未准备')
+}
 
 const isTaskForTag = (tag: string) => {
   const task = store.downloadTask
@@ -167,7 +196,17 @@ const handlePrepareResources = async (tag: string) => {
 }
 
 const handleDeleteBuild = async (tag: string) => {
-  if (!confirm(`确定删除 Horizon 构建「${tag}」及其已准备资源吗？`)) return
+  closeMenu()
+  const bound = getBoundInstances(tag)
+  if (bound.length > 0) {
+    const names = bound.map((i) => i.name).join('、')
+    alert(`构建「${tag}」当前正被实例【${names}】绑定使用。\n\n请先前往「版本/实例」页或启动页删除相关实例后，再移除该构建。`)
+    return
+  }
+  if (!confirm(`确定删除 Horizon 构建「${tag}」及其已准备资源吗？\n\n将移除 builds/${tag} 与 resources/${tag}（不影响原版 versions 目录）。`)) {
+    return
+  }
+  deletingTag.value = tag
   try {
     await backend.deleteHorizonBuild(tag)
     delete checkMap.value[tag]
@@ -175,7 +214,27 @@ const handleDeleteBuild = async (tag: string) => {
     store.showNotification(`已删除 Horizon 构建 ${tag}`)
   } catch (err: any) {
     alert(`删除失败: ${err}`)
+  } finally {
+    deletingTag.value = null
   }
+}
+
+const handleOpenBuildFolder = async (tag: string, kind: 'build' | 'resources') => {
+  closeMenu()
+  try {
+    await backend.openHorizonBuildFolder(tag, kind)
+  } catch (err: any) {
+    alert(`打开目录失败: ${err}`)
+  }
+}
+
+const goToLaunchHorizon = (tag: string) => {
+  const bound = getBoundInstances(tag)
+  if (bound.length === 0) return
+  const current = store.currentHorizonInstance
+  const preferred = (current && bound.find((i) => i.name === current.name)) || bound[0]
+  store.setCurrentHorizonInstance(preferred)
+  store.currentTab = 'launch'
 }
 
 const openCreateInstance = (tag: string) => {
@@ -202,7 +261,14 @@ const handleCreateInstance = async (tag: string) => {
 }
 
 onMounted(() => {
+  window.addEventListener('click', closeMenu)
+  window.addEventListener('keydown', handleKeydown)
   loadBuilds()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('click', closeMenu)
+  window.removeEventListener('keydown', handleKeydown)
 })
 
 defineExpose({
@@ -261,7 +327,7 @@ defineExpose({
       {{ loadError }}
     </MyHint>
 
-    <div class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+    <div class="flex-1 overflow-y-auto space-y-2.5 pr-1 pb-24">
       <div
         v-if="isLoading && builds.length === 0"
         class="h-44 flex flex-col items-center justify-center text-xs text-pcl-subtext gap-2"
@@ -280,7 +346,8 @@ defineExpose({
       <div
         v-for="item in builds"
         :key="item.tag"
-        class="p-3.5 rounded-xl bg-pcl-card border border-pcl-border shadow-pcl-card space-y-2.5"
+        class="relative p-3.5 rounded-xl bg-pcl-card border border-pcl-border shadow-pcl-card space-y-2.5"
+        :class="openMenuTag === item.tag ? 'z-30' : 'z-0'"
       >
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0 space-y-1">
@@ -329,38 +396,141 @@ defineExpose({
                 <span>MC {{ item.installed_meta.minecraft_version }}</span>
                 <span>Java {{ item.installed_meta.java_major }}</span>
               </template>
+              <span v-if="item.is_installed && item.launchable">
+                实例：{{ getBoundInstances(item.tag).length > 0 ? getBoundInstances(item.tag).map((i) => i.name).join('、') : '暂无实例' }}
+              </span>
             </div>
           </div>
 
-          <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          <div class="relative flex items-center gap-1.5 shrink-0">
             <template v-if="item.is_installed">
+              <!-- 已安装但损坏/不兼容 -->
+              <template v-if="!item.launchable">
+                <MyButton
+                  type="primary"
+                  size="small"
+                  :loading="installingTag === item.tag"
+                  :disabled="store.isDownloading && !isTaskForTag(item.tag)"
+                  @click="handleInstallBuild(item.tag)"
+                >
+                  重新安装
+                </MyButton>
+              </template>
+
+              <!-- 已安装、可启动、资源未就绪 -->
+              <template v-else-if="!isResourceReady(item.tag)">
+                <MyButton
+                  type="primary"
+                  size="small"
+                  :loading="preparingTag === item.tag"
+                  :disabled="store.isDownloading && !isTaskForTag(item.tag)"
+                  @click="handlePrepareResources(item.tag)"
+                >
+                  准备资源
+                </MyButton>
+                <MyButton
+                  type="secondary"
+                  size="small"
+                  @click="openCreateInstance(item.tag)"
+                >
+                  创建实例
+                </MyButton>
+              </template>
+
+              <!-- 已安装、可启动、资源已就绪、尚无实例 -->
+              <template v-else-if="getBoundInstances(item.tag).length === 0">
+                <MyButton
+                  type="primary"
+                  size="small"
+                  @click="openCreateInstance(item.tag)"
+                >
+                  + 创建实例
+                </MyButton>
+                <MyButton
+                  type="secondary"
+                  size="small"
+                  :loading="preparingTag === item.tag"
+                  :disabled="store.isDownloading && !isTaskForTag(item.tag)"
+                  @click="handlePrepareResources(item.tag)"
+                >
+                  重新检查
+                </MyButton>
+              </template>
+
+              <!-- 已安装、可启动、资源已就绪、已有实例（日常态） -->
+              <template v-else>
+                <button
+                  class="px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs transition-colors flex items-center gap-1"
+                  @click="goToLaunchHorizon(item.tag)"
+                >
+                  <PclIcon name="launch" :size="12" />
+                  <span>去启动</span>
+                </button>
+                <MyButton
+                  type="secondary"
+                  size="small"
+                  @click="openCreateInstance(item.tag)"
+                >
+                  + 新建实例
+                </MyButton>
+              </template>
+
               <MyButton
-                v-if="item.launchable"
                 type="secondary"
                 size="small"
-                :loading="preparingTag === item.tag"
-                :disabled="store.isDownloading && !isTaskForTag(item.tag)"
-                @click="handlePrepareResources(item.tag)"
+                :loading="deletingTag === item.tag"
+                title="更多操作"
+                @click.stop="toggleMenu(item.tag)"
               >
-                {{ getResourceStatus(item.tag).label === '已就绪' ? '重新检查/准备' : '准备资源' }}
+                <span>⋯</span>
               </MyButton>
 
-              <MyButton
-                v-if="item.launchable"
-                type="primary"
-                size="small"
-                @click="openCreateInstance(item.tag)"
+              <div
+                v-if="openMenuTag === item.tag"
+                class="absolute right-0 top-full mt-1.5 w-48 rounded-lg border border-pcl-border bg-pcl-card shadow-lg py-1 text-xs z-40"
+                @click.stop
               >
-                创建实例
-              </MyButton>
-
-              <MyButton
-                type="danger"
-                size="small"
-                @click="handleDeleteBuild(item.tag)"
-              >
-                删除
-              </MyButton>
+                <button
+                  v-if="item.launchable && isResourceReady(item.tag) && getBoundInstances(item.tag).length > 0"
+                  :disabled="store.isDownloading && !isTaskForTag(item.tag)"
+                  class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  @click="closeMenu(); handlePrepareResources(item.tag)"
+                >
+                  <PclIcon name="refresh" :size="12" class="text-pcl-subtext" />
+                  <span>重新检查 / 准备资源</span>
+                </button>
+                <button
+                  class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                  @click="handleOpenBuildFolder(item.tag, 'build')"
+                >
+                  <PclIcon name="folder" :size="12" class="text-pcl-subtext" />
+                  <span>打开构建目录</span>
+                </button>
+                <button
+                  v-if="hasPreparedResourcesDir(item.tag)"
+                  class="w-full px-3 py-1.5 text-left text-pcl-text hover:bg-black/5 dark:hover:bg-white/10 flex items-center gap-2 cursor-pointer"
+                  @click="handleOpenBuildFolder(item.tag, 'resources')"
+                >
+                  <PclIcon name="folder" :size="12" class="text-pcl-subtext" />
+                  <span>打开资源目录</span>
+                </button>
+                <div class="my-1 border-t border-pcl-border" />
+                <button
+                  class="w-full px-3 py-1.5 text-left text-red-500 hover:bg-red-500/10 flex items-center justify-between gap-2 font-medium cursor-pointer"
+                  @click="handleDeleteBuild(item.tag)"
+                >
+                  <span class="flex items-center gap-2">
+                    <PclIcon name="close" :size="12" />
+                    <span>删除此构建...</span>
+                  </span>
+                  <span
+                    v-if="getBoundInstances(item.tag).length > 0"
+                    class="text-[10px] font-normal text-pcl-subtext"
+                  >
+                    需先解绑
+                  </span>
+                </button>
+              </div>
             </template>
 
             <MyButton
@@ -371,7 +541,8 @@ defineExpose({
               :disabled="store.isDownloading && !isTaskForTag(item.tag)"
               @click="handleInstallBuild(item.tag)"
             >
-              安装构建
+              <PclIcon name="download" :size="12" />
+              <span>安装构建</span>
             </MyButton>
           </div>
         </div>
