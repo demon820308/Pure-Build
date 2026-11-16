@@ -7,9 +7,23 @@ import type {
   UserProfile,
   DeviceCodeResponse,
   ModInfo,
+  PblBuildMeta,
+  HorizonBuildItem,
+  HorizonCheckResult,
+  HorizonInstance,
 } from './types.generated'
 
-export type { VersionInfo, JavaInfo, UserProfile, DeviceCodeResponse, ModInfo }
+export type {
+  VersionInfo,
+  JavaInfo,
+  UserProfile,
+  DeviceCodeResponse,
+  ModInfo,
+  PblBuildMeta,
+  HorizonBuildItem,
+  HorizonCheckResult,
+  HorizonInstance,
+}
 
 export interface PlatformInfo {
   os: string
@@ -562,5 +576,46 @@ export const backend = {
     } catch {
       // 容错忽略
     }
+  },
+
+  async fetchHorizonBuilds(): Promise<HorizonBuildItem[]> {
+    return await invoke<HorizonBuildItem[]>('fetch_horizon_builds')
+  },
+
+  async installHorizonBuild(tag: string): Promise<PblBuildMeta> {
+    return await invoke<PblBuildMeta>('install_horizon_build', { tag })
+  },
+
+  async deleteHorizonBuild(tag: string): Promise<void> {
+    await invoke('delete_horizon_build', { tag })
+  },
+
+  async prepareHorizonResources(tag: string): Promise<void> {
+    await invoke('prepare_horizon_resources', { tag })
+  },
+
+  async checkHorizonResources(tag: string): Promise<HorizonCheckResult> {
+    return await invoke<HorizonCheckResult>('check_horizon_resources', { tag })
+  },
+
+  async listHorizonInstances(): Promise<HorizonInstance[]> {
+    try {
+      return await invoke<HorizonInstance[]>('list_horizon_instances')
+    } catch (e) {
+      console.warn('读取 Horizon 实例列表异常:', e)
+      return []
+    }
+  },
+
+  async createHorizonInstance(name: string, tag: string): Promise<HorizonInstance> {
+    return await invoke<HorizonInstance>('create_horizon_instance', { name, tag })
+  },
+
+  async deleteHorizonInstance(name: string): Promise<void> {
+    await invoke('delete_horizon_instance', { name })
+  },
+
+  async launchHorizon(instanceName: string): Promise<string> {
+    return await invoke<string>('launch_horizon', { instanceName })
   },
 }

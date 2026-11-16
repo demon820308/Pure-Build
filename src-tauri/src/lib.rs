@@ -1,9 +1,10 @@
 use pcl_base::{
-    platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager, CrashAnalysisResult,
-    DeviceCodeResponse, DownloadManager, DownloadProgress, EndpointPingResult, FabricMetaSummary,
-    JavaDownloader, JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager,
-    LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager,
-    ModrinthProject, MusicTrack, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle,
+    endpoints, horizon, platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager,
+    CrashAnalysisResult, DeviceCodeResponse, DownloadManager, DownloadProgress, EndpointPingResult,
+    FabricMetaSummary, HorizonBuildItem, HorizonCheckResult, HorizonInstance, JavaDownloader,
+    JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager, LoaderVersionItem,
+    MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager, ModrinthProject,
+    MusicTrack, PblBuildMeta, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle,
     ResourceItem, ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller,
     VersionScanner,
 };
@@ -360,6 +361,99 @@ fn kill_game_process(pid: u32) -> Result<(), String> {
     MinecraftLauncher::kill_process(pid)
 }
 
+fn current_game_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(ConfigManager::load().game_dir)
+}
+
+#[tauri::command]
+async fn fetch_horizon_builds() -> Result<Vec<HorizonBuildItem>, String> {
+    let game_dir = current_game_dir();
+    horizon::fetch_horizon_builds(endpoints::shared_http_client(), &game_dir).await
+}
+
+#[tauri::command]
+async fn install_horizon_build(app: AppHandle, tag: String) -> Result<PblBuildMeta, String> {
+    let game_dir = current_game_dir();
+    horizon::install_horizon_build(
+        &make_reporter(app),
+        endpoints::shared_http_client(),
+        &game_dir,
+        &tag,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn delete_horizon_build(tag: String) -> Result<(), String> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || horizon::delete_installed_build(&game_dir, &tag))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn prepare_horizon_resources(app: AppHandle, tag: String) -> Result<(), String> {
+    let cfg = ConfigManager::load();
+    let profile = ConfigManager::load_profile();
+    let game_dir = std::path::PathBuf::from(&cfg.game_dir);
+    let java_cand = cfg.java_path.as_deref().unwrap_or("");
+    horizon::prepare_build_resources(
+        &make_reporter(app),
+        &game_dir,
+        &tag,
+        java_cand,
+        profile.as_ref(),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn check_horizon_resources(tag: String) -> Result<HorizonCheckResult, String> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || horizon::check_build_resources(&game_dir, &tag))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_horizon_instances() -> Vec<HorizonInstance> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || horizon::list_instances(&game_dir))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn create_horizon_instance(name: String, tag: String) -> Result<HorizonInstance, String> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || horizon::create_instance(&game_dir, &name, &tag))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_horizon_instance(name: String) -> Result<(), String> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || horizon::delete_instance(&game_dir, &name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn launch_horizon(app: AppHandle, instance_name: String) -> Result<String, String> {
+    let cfg = ConfigManager::load();
+    let profile = ConfigManager::load_profile();
+    let game_dir = std::path::PathBuf::from(&cfg.game_dir);
+    horizon::launch_horizon_instance(
+        make_reporter(app),
+        &game_dir,
+        &instance_name,
+        profile.as_ref(),
+        &cfg,
+    )
+    .await
+}
+
 #[tauri::command]
 async fn scan_lan_rooms() -> Result<Vec<LanRoomInfo>, String> {
     LinkManager::scan_lan_rooms(1500).await
@@ -498,6 +592,15 @@ pub fn run() {
             launch_minecraft,
             ensure_java_version,
             kill_game_process,
+            fetch_horizon_builds,
+            install_horizon_build,
+            delete_horizon_build,
+            prepare_horizon_resources,
+            check_horizon_resources,
+            list_horizon_instances,
+            create_horizon_instance,
+            delete_horizon_instance,
+            launch_horizon,
             scan_lan_rooms,
             broadcast_lan_room,
             decode_lan_invite_code,
