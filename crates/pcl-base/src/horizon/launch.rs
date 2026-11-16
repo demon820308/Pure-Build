@@ -140,7 +140,8 @@ pub fn launch_client_process(
     cmd.current_dir(instance_dir);
     cmd.args(args);
     cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
+    // Horizon 客户端日志写入 --home/logs/，崩溃提示走 stderr；丢弃 stdout 避免未消费管道写满阻塞游戏进程
+    cmd.stdout(Stdio::null());
     cmd.stderr(Stdio::piped());
 
     let mut child = cmd
