@@ -10,10 +10,12 @@ pub use api::{
     parse_prepare_launch_api, ClientLaunchApi, LaunchOptionDescriptor, PrepareLaunchApi,
 };
 pub use build::{
-    delete_installed_build, extract_build_package, fetch_horizon_builds, install_horizon_build,
-    list_installed_builds, merge_remote_and_local_builds, parse_sha256sums,
-    read_installed_build_meta, verify_bytes_sha256, verify_release_signature, HorizonBuildItem,
-    PblBuildMeta, HORIZON_RELEASE_PUBLIC_KEY_B64,
+    check_horizon_update, classify_negotiation_health, delete_installed_build,
+    detect_horizon_update, extract_build_package, fetch_horizon_builds, install_horizon_build,
+    list_installed_builds, list_local_horizon_builds, merge_remote_and_local_builds,
+    parse_sha256sums, read_installed_build_meta, validate_installed_build, verify_bytes_sha256,
+    verify_release_signature, HorizonBuildItem, HorizonUpdateStatus, PblBuildMeta,
+    HORIZON_RELEASE_PUBLIC_KEY_B64,
 };
 pub use instances::{
     create_instance, delete_instance, find_instance, instance_dir, list_instances,

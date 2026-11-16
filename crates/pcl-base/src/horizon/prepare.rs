@@ -556,4 +556,24 @@ mod tests {
         assert!(args.contains(&"--java-home".to_string()));
         assert!(!args.contains(&"--server-jar".to_string()));
     }
+
+    #[test]
+    fn test_check_build_resources_missing_or_corrupt() {
+        let tmp = std::env::temp_dir().join(format!("pbl_res_check_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        // resources 目录不存在时返回 is_ready = false，不崩溃
+        let missing = check_build_resources(&tmp, "nightly").unwrap();
+        assert!(!missing.is_ready);
+        assert_eq!(missing.gaps, vec!["资源尚未准备"]);
+
+        // resources 目录存在但缺少 horizon-prepare 二进制时明确报错
+        let res_dir = tmp.join("horizon").join("resources").join("nightly");
+        std::fs::create_dir_all(&res_dir).unwrap();
+        let corrupt = check_build_resources(&tmp, "nightly");
+        assert!(corrupt.is_err());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

@@ -31,6 +31,20 @@ const showVersionPicker = ref(false)
 const javaPanelRef = ref<InstanceType<typeof JavaSelectPanel> | null>(null)
 
 const hasLaunchTarget = computed(() => !!store.currentHorizonInstance || !!store.currentVersion)
+const activeHorizonBuild = computed(() => {
+  const inst = store.currentHorizonInstance
+  if (!inst) return null
+  return store.horizonBuilds.find((b) => b.tag === inst.build_tag) || null
+})
+const isHorizonBuildBroken = computed(() => {
+  const inst = store.currentHorizonInstance
+  if (!inst) return false
+  const build = activeHorizonBuild.value
+  return !build || !build.launchable
+})
+const horizonBrokenReason = computed(
+  () => activeHorizonBuild.value?.unlaunchable_reason || '构建损坏或未找到，不可启动'
+)
 const isHorizonAuthBlocked = computed(
   () => !!store.currentHorizonInstance && !isMsaProfile(store.userProfile)
 )
@@ -137,19 +151,27 @@ defineExpose({
       <!-- 底部：54px 双行「启动游戏」主按钮 + 版本选择框 + 35x35 齿轮按钮 -->
       <div class="space-y-2.5">
         <button
-          :disabled="!hasLaunchTarget || isHorizonAuthBlocked"
+          :disabled="!hasLaunchTarget || isHorizonAuthBlocked || isHorizonBuildBroken"
           class="w-full h-[54px] rounded-[4px] border border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-8)] hover:bg-[var(--pcl-brush-6)] active:scale-[0.99] transition-all flex flex-col items-center justify-center cursor-pointer disabled:opacity-50"
-          :title="isHorizonAuthBlocked ? 'Horizon 需要正版微软账号' : ''"
+          :title="isHorizonBuildBroken ? horizonBrokenReason : isHorizonAuthBlocked ? 'Horizon 需要正版微软账号' : ''"
           @click="emit('launch')"
         >
           <span class="text-[15px] font-bold text-[var(--pcl-brush-2)] leading-tight">
-            {{ isHorizonAuthBlocked ? '需正版微软账号' : '启动游戏' }}
+            {{
+              isHorizonBuildBroken
+                ? '构建不可启动'
+                : isHorizonAuthBlocked
+                  ? '需正版微软账号'
+                  : '启动游戏'
+            }}
           </span>
           <span class="text-[11px] text-[#737373] truncate max-w-[230px] mt-0.5">
             {{
-              isHorizonAuthBlocked
-                ? 'Horizon 需要正版微软账号'
-                : activeTargetLabel || '未检测到游戏版本，请先下载'
+              isHorizonBuildBroken
+                ? horizonBrokenReason
+                : isHorizonAuthBlocked
+                  ? 'Horizon 需要正版微软账号'
+                  : activeTargetLabel || '未检测到游戏版本，请先下载'
             }}
           </span>
         </button>
@@ -242,6 +264,14 @@ defineExpose({
   </div>
 
   <div class="flex-1 h-full overflow-y-auto p-5 space-y-3.5">
+    <MyHint
+      v-if="isHorizonBuildBroken"
+      type="error"
+      :closable="false"
+    >
+      该 Horizon 构建当前不可启动（{{ horizonBrokenReason }}），请前往下载页重新安装或切换构建。
+    </MyHint>
+
     <MyHint
       v-if="isHorizonAuthBlocked"
       type="info"

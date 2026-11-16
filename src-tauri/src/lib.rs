@@ -1,12 +1,12 @@
 use pcl_base::{
     endpoints, horizon, platform, AppConfig, CacheCleanResult, CommunityManager, ConfigManager,
     CrashAnalysisResult, DeviceCodeResponse, DownloadManager, DownloadProgress, EndpointPingResult,
-    FabricMetaSummary, HorizonBuildItem, HorizonCheckResult, HorizonInstance, JavaDownloader,
-    JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager, LoaderVersionItem,
-    MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager, ModrinthProject,
-    MusicTrack, PblBuildMeta, PlatformInfo, ProgressReporter, RemoteVersion, ReporterHandle,
-    ResourceItem, ResourceScanner, SaveInfo, UserProfile, VersionInfo, VersionInstaller,
-    VersionScanner,
+    FabricMetaSummary, HorizonBuildItem, HorizonCheckResult, HorizonInstance, HorizonUpdateStatus,
+    JavaDownloader, JavaInfo, JavaScanner, LanRoomInfo, LaunchProgress, LinkManager,
+    LoaderVersionItem, MicrosoftAuth, MinecraftLauncher, ModInfo, ModScanner, ModpackManager,
+    ModrinthProject, MusicTrack, PblBuildMeta, PlatformInfo, ProgressReporter, RemoteVersion,
+    ReporterHandle, ResourceItem, ResourceScanner, SaveInfo, UserProfile, VersionInfo,
+    VersionInstaller, VersionScanner,
 };
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -372,6 +372,20 @@ async fn fetch_horizon_builds() -> Result<Vec<HorizonBuildItem>, String> {
 }
 
 #[tauri::command]
+async fn list_local_horizon_builds() -> Vec<HorizonBuildItem> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || horizon::list_local_horizon_builds(&game_dir))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn check_horizon_update() -> Result<HorizonUpdateStatus, String> {
+    let game_dir = current_game_dir();
+    horizon::check_horizon_update(endpoints::shared_http_client(), &game_dir).await
+}
+
+#[tauri::command]
 async fn install_horizon_build(app: AppHandle, tag: String) -> Result<PblBuildMeta, String> {
     let game_dir = current_game_dir();
     horizon::install_horizon_build(
@@ -621,6 +635,8 @@ pub fn run() {
             ensure_java_version,
             kill_game_process,
             fetch_horizon_builds,
+            list_local_horizon_builds,
+            check_horizon_update,
             install_horizon_build,
             delete_horizon_build,
             prepare_horizon_resources,

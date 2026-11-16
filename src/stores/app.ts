@@ -67,7 +67,7 @@ export const useAppStore = defineStore('app', () => {
           session.userProfile = savedProfile
           config.playerName = savedProfile.name
         }
-        void refreshInstalledVersions()
+        void refreshInstalledVersions().then(() => void versions.checkHorizonUpdates())
         void music.refreshMusicPlaylist(false, true)
       } catch (e) {
         console.warn('加载配置失败:', e)
@@ -101,7 +101,9 @@ export const useAppStore = defineStore('app', () => {
     setThemeHue: config.setThemeHue, setUiStyle: config.setUiStyle, saveCurrentConfig: config.saveCurrentConfig,
     installedVersions: toRef(versions, 'installedVersions'), currentVersion: toRef(versions, 'currentVersion'),
     horizonInstances: toRef(versions, 'horizonInstances'), currentHorizonInstance: toRef(versions, 'currentHorizonInstance'),
+    horizonBuilds: toRef(versions, 'horizonBuilds'), horizonUpdateStatus: toRef(versions, 'horizonUpdateStatus'),
     instanceRefreshTrigger: toRef(versions, 'instanceRefreshTrigger'),
+    checkHorizonUpdates: versions.checkHorizonUpdates,
     refreshInstalledVersions, setCurrentVersion: versions.setCurrentVersion, setCurrentHorizonInstance: versions.setCurrentHorizonInstance, triggerInstanceRefresh: versions.triggerInstanceRefresh,
     musicTracks: toRef(music, 'musicTracks'), currentTrack: toRef(music, 'currentTrack'),
     isMusicPlaying: toRef(music, 'isMusicPlaying'), musicProgress: toRef(music, 'musicProgress'),

@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { HorizonInstance, VersionInfo } from '../services/types.generated'
+import type {
+  HorizonBuildItem,
+  HorizonInstance,
+  HorizonUpdateStatus,
+  VersionInfo,
+} from '../services/types.generated'
 import { backend } from '../services/backend'
 import { pruneHorizonInstance, pruneSelectedVersion } from '../utils/coreLogic'
 
@@ -9,7 +14,16 @@ export const useVersionsStore = defineStore('versions', () => {
   const currentVersion = ref<VersionInfo | null>(null)
   const horizonInstances = ref<HorizonInstance[]>([])
   const currentHorizonInstance = ref<HorizonInstance | null>(null)
+  const horizonBuilds = ref<HorizonBuildItem[]>([])
+  const horizonUpdateStatus = ref<HorizonUpdateStatus | null>(null)
   const instanceRefreshTrigger = ref(0)
+
+  const checkHorizonUpdates = async () => {
+    const status = await backend.checkHorizonUpdate()
+    if (status) {
+      horizonUpdateStatus.value = status
+    }
+  }
 
   const refreshInstalledVersions = async (
     gameDir: string,
@@ -17,12 +31,14 @@ export const useVersionsStore = defineStore('versions', () => {
   ) => {
     if (!gameDir) return
     try {
-      const [list, hList] = await Promise.all([
+      const [list, hList, localBuilds] = await Promise.all([
         backend.getMinecraftVersions(gameDir),
         backend.listHorizonInstances(),
+        backend.listLocalHorizonBuilds(),
       ])
       installedVersions.value = list
       horizonInstances.value = hList
+      horizonBuilds.value = localBuilds
 
       if (currentHorizonInstance.value) {
         const hDecision = pruneHorizonInstance(currentHorizonInstance.value, hList)
@@ -72,7 +88,10 @@ export const useVersionsStore = defineStore('versions', () => {
     currentVersion,
     horizonInstances,
     currentHorizonInstance,
+    horizonBuilds,
+    horizonUpdateStatus,
     instanceRefreshTrigger,
+    checkHorizonUpdates,
     refreshInstalledVersions,
     setCurrentVersion,
     setCurrentHorizonInstance,

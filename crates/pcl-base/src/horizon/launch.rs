@@ -5,9 +5,10 @@ use super::session::build_session_bytes;
 use crate::auth::UserProfile;
 use crate::config::AppConfig;
 use crate::crash::CrashAnalysisResult;
+use crate::installer::DownloadProgress;
 use crate::launch::LaunchProgress;
 use crate::platform;
-use crate::reporter::ReporterHandle;
+use crate::reporter::{ProgressReporter, ReporterHandle};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -258,6 +259,34 @@ pub fn launch_client_process(
     Ok(pid)
 }
 
+/// 将资源准备阶段的下载进度同步镜像到 LaunchProgress，保证启动重备时进度在启动页可见
+struct LaunchPrepareBridgeReporter(ReporterHandle);
+
+impl ProgressReporter for LaunchPrepareBridgeReporter {
+    fn emit_download(&self, progress: DownloadProgress) {
+        self.0.emit_launch(LaunchProgress {
+            step: format!("准备资源: {}", progress.step),
+            percentage: 50.0 + (progress.percentage.clamp(0.0, 100.0) * 0.35),
+            pid: None,
+            is_finished: false,
+            error: progress.error.clone(),
+        });
+        self.0.emit_download(progress);
+    }
+
+    fn emit_launch(&self, progress: LaunchProgress) {
+        self.0.emit_launch(progress);
+    }
+
+    fn emit_crash(&self, analysis: CrashAnalysisResult) {
+        self.0.emit_crash(analysis);
+    }
+
+    fn emit_exit(&self, exit_code: i32) {
+        self.0.emit_exit(exit_code);
+    }
+}
+
 /// 完整的 Horizon 实例启动编排：
 /// 1. 微软正版账号门禁校验并生成内存会话 JSON（不落盘、不进日志/参数）；
 /// 2. 读取实例注册表与构建协商结果（协商失败直接报不兼容/损坏，不硬启）；
@@ -322,9 +351,12 @@ pub async fn launch_horizon_instance(
 
     emit_progress("正在检查 Horizon 游戏资源完整性...", 40.0, None, false, None);
     let pre_check_ready = if resources_dir.exists() {
-        run_prepare_check(&prepare_bin, &resources_dir)
-            .map(|res| res.is_ready)
-            .unwrap_or(false)
+        let chk = run_prepare_check(&prepare_bin, &resources_dir).map_err(|e| {
+            let msg = format!("启动前资源检查失败: {}", e);
+            emit_progress("启动失败", 0.0, None, true, Some(msg.clone()));
+            msg
+        })?;
+        chk.is_ready
     } else {
         false
     };
@@ -332,13 +364,20 @@ pub async fn launch_horizon_instance(
     if !pre_check_ready {
         emit_progress("资源未就绪，正在自动准备 Horizon 资源...", 50.0, None, false, None);
         let java_cand = cfg.java_path.as_deref().unwrap_or("");
-        prepare_build_resources(&reporter, game_dir, &instance.build_tag, java_cand, Some(active_profile))
-            .await
-            .map_err(|e| {
-                let msg = format!("启动前自动准备资源失败: {}", e);
-                emit_progress("启动失败", 0.0, None, true, Some(msg.clone()));
-                msg
-            })?;
+        let bridge_reporter: ReporterHandle = Arc::new(LaunchPrepareBridgeReporter(reporter.clone()));
+        prepare_build_resources(
+            &bridge_reporter,
+            game_dir,
+            &instance.build_tag,
+            java_cand,
+            Some(active_profile),
+        )
+        .await
+        .map_err(|e| {
+            let msg = format!("启动前自动准备资源失败: {}", e);
+            emit_progress("启动失败", 0.0, None, true, Some(msg.clone()));
+            msg
+        })?;
 
         let post_check = run_prepare_check(&prepare_bin, &resources_dir).map_err(|e| {
             emit_progress("启动失败", 0.0, None, true, Some(e.clone()));
@@ -508,5 +547,48 @@ mod tests {
                 log_snippet: stderr101.join("\n"),
             }
         );
+    }
+
+    #[tokio::test]
+    async fn test_launch_horizon_rejects_broken_negotiation_without_fallback() {
+        let tmp = std::env::temp_dir().join(format!("pbl_launch_neg_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let build_dir = tmp.join("horizon").join("builds").join("nightly");
+        std::fs::create_dir_all(&build_dir).unwrap();
+        let meta = crate::horizon::build::PblBuildMeta {
+            tag: "nightly".to_string(),
+            package_name: "horizon-windows-x64.zip".to_string(),
+            sha256: "0".repeat(64),
+            horizon_version: "0.1.1".to_string(),
+            minecraft_version: "26.3".to_string(),
+            launch_api_version: "0.1.1".to_string(),
+            java_major: 25,
+            installed_at: "2026-11-16T00:00:00Z".to_string(),
+        };
+        std::fs::write(
+            build_dir.join("pbl-build.json"),
+            serde_json::to_string(&meta).unwrap(),
+        )
+        .unwrap();
+        crate::horizon::instances::create_instance(&tmp, "BrokenInst", "nightly").unwrap();
+
+        let reporter: ReporterHandle = Arc::new(crate::reporter::NoopProgressReporter);
+        let cfg = AppConfig::default();
+        let msa = UserProfile {
+            name: "Alex".to_string(),
+            uuid: "069a79f444e94726a5befca90e38aaf5".to_string(),
+            access_token: "tok".to_string(),
+            avatar_url: "".to_string(),
+            auth_type: "msa".to_string(),
+            auth_server: None,
+        };
+
+        // 缺少真实 horizon-client 二进制时协商必败，禁止回退按默认选项硬启
+        let err = launch_horizon_instance(reporter, &tmp, "BrokenInst", Some(&msa), &cfg)
+            .await
+            .unwrap_err();
+        assert!(err.contains("构建不可启动"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

@@ -12,8 +12,10 @@ export type ModInfo = { file_name: string, name: string, mod_id: string, version
 
 export type PblBuildMeta = { tag: string, package_name: string, sha256: string, horizon_version: string, minecraft_version: string, launch_api_version: string, java_major: number, installed_at: string, };
 
-export type HorizonBuildItem = { tag: string, published_at: string | null, package_name: string | null, package_size: number | null, is_installed: boolean, installed_meta: PblBuildMeta | null, };
+export type HorizonBuildItem = { tag: string, published_at: string | null, package_name: string | null, package_size: number | null, is_installed: boolean, installed_meta: PblBuildMeta | null, launchable: boolean, unlaunchable_reason: string | null, };
 
 export type HorizonCheckResult = { is_ready: boolean, gaps: Array<string>, error: string | null, };
 
 export type HorizonInstance = { name: string, build_tag: string, created_at: string, };
+
+export type HorizonUpdateStatus = { has_update: boolean, latest_tag: string | null, latest_published_at: string | null, message: string | null, };

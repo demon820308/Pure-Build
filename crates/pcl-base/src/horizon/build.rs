@@ -1,4 +1,6 @@
-use super::api::{negotiate_client_api, negotiate_prepare_api};
+use super::api::{
+    negotiate_client_api, negotiate_prepare_api, ClientLaunchApi, PrepareLaunchApi,
+};
 use super::instances::{list_instances, now_iso_utc};
 use crate::endpoints;
 use crate::installer::DownloadProgress;
@@ -46,6 +48,17 @@ pub struct HorizonBuildItem {
     pub package_size: Option<u64>,
     pub is_installed: bool,
     pub installed_meta: Option<PblBuildMeta>,
+    pub launchable: bool,
+    pub unlaunchable_reason: Option<String>,
+}
+
+/// Horizon nightly 更新检查结果
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
+pub struct HorizonUpdateStatus {
+    pub has_update: bool,
+    pub latest_tag: Option<String>,
+    pub latest_published_at: Option<String>,
+    pub message: Option<String>,
 }
 
 /// GitHub Releases 原始资产项
@@ -228,8 +241,62 @@ pub fn extract_build_package(
         return Err(format!("不支持的归档格式: {}", pkg_name));
     }
 
-    let _ = platform::clear_quarantine(dest_dir);
+    if let Err(e) = platform::clear_quarantine(dest_dir) {
+        // 失败仅告警，不拦截构建安装流程
+        eprintln!("[Horizon] 警告: 清除 macOS quarantine 属性失败: {}", e);
+    }
     Ok(())
+}
+
+/// 根据协商结果判定构建健康状态（纯函数，便于测试）
+/// `--launch-api` 失败或大版本不兼容时标为不可启动，不回退硬启
+pub fn classify_negotiation_health(
+    client_res: Result<ClientLaunchApi, String>,
+    prepare_res: Result<PrepareLaunchApi, String>,
+) -> (bool, Option<String>) {
+    match (client_res, prepare_res) {
+        (Ok(c), Ok(p)) => {
+            if c.minecraft != p.minecraft {
+                (
+                    false,
+                    Some(format!(
+                        "构建损坏：client ({}) 与 prepare ({}) 钉住的 Minecraft 版本不一致",
+                        c.minecraft, p.minecraft
+                    )),
+                )
+            } else {
+                (true, None)
+            }
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            if e.contains("大版本不兼容") {
+                (false, Some(format!("API 不兼容: {}", e)))
+            } else {
+                (false, Some(format!("构建损坏: {}", e)))
+            }
+        }
+    }
+}
+
+/// 检查本地已安装构建的健康与可启动状态（失败返回原因，禁止兜底硬启）
+pub fn validate_installed_build(game_dir: &Path, tag: &str) -> (bool, Option<String>) {
+    let build_dir = game_dir.join("horizon").join("builds").join(tag);
+    let client_bin = build_dir.join(platform::horizon_client_bin_name());
+    let prepare_bin = build_dir.join(platform::horizon_prepare_bin_name());
+
+    let client_res = negotiate_client_api(&client_bin);
+    let prepare_res = negotiate_prepare_api(&prepare_bin);
+    classify_negotiation_health(client_res, prepare_res)
+}
+
+/// 仅查询本地已安装构建及其健康状态（断网时也可独立运行）
+pub fn list_local_horizon_builds(game_dir: &Path) -> Vec<HorizonBuildItem> {
+    let local = list_installed_builds(game_dir);
+    let health: HashMap<String, (bool, Option<String>)> = local
+        .iter()
+        .map(|m| (m.tag.clone(), validate_installed_build(game_dir, &m.tag)))
+        .collect();
+    merge_remote_and_local_builds(&[], &local, platform::horizon_package_name(), &health)
 }
 
 /// 读取本地已安装构建的元数据
@@ -265,11 +332,12 @@ pub fn list_installed_builds(game_dir: &Path) -> Vec<PblBuildMeta> {
 }
 
 /// 合并远端 GitHub Releases 与本地已安装构建列表（纯函数，便于测试）
-/// 保留已失效（超过 7 天清理期）但本地仍存在的构建
+/// 保留已失效（超过 7 天清理期）但本地仍存在的构建，并附带协商健康状态
 pub fn merge_remote_and_local_builds(
     remote: &[GitHubRelease],
     local: &[PblBuildMeta],
     pkg_name: Option<&str>,
+    health_map: &HashMap<String, (bool, Option<String>)>,
 ) -> Vec<HorizonBuildItem> {
     let local_map: HashMap<&str, &PblBuildMeta> =
         local.iter().map(|m| (m.tag.as_str(), m)).collect();
@@ -281,6 +349,15 @@ pub fn merge_remote_and_local_builds(
             rel.assets.iter().find(|a| a.name == target)
         });
         let local_meta = local_map.get(rel.tag_name.as_str()).copied().cloned();
+        let is_installed = local_meta.is_some();
+        let (launchable, unlaunchable_reason) = if is_installed {
+            health_map
+                .get(&rel.tag_name)
+                .cloned()
+                .unwrap_or((true, None))
+        } else {
+            (false, None)
+        };
         seen_tags.insert(rel.tag_name.clone());
         result.push(HorizonBuildItem {
             tag: rel.tag_name.clone(),
@@ -289,13 +366,19 @@ pub fn merge_remote_and_local_builds(
                 .map(|a| a.name.clone())
                 .or_else(|| pkg_name.map(|s| s.to_string())),
             package_size: matched_asset.map(|a| a.size),
-            is_installed: local_meta.is_some(),
+            is_installed,
             installed_meta: local_meta,
+            launchable,
+            unlaunchable_reason,
         });
     }
 
     for meta in local {
         if !seen_tags.contains(&meta.tag) {
+            let (launchable, unlaunchable_reason) = health_map
+                .get(&meta.tag)
+                .cloned()
+                .unwrap_or((true, None));
             result.push(HorizonBuildItem {
                 tag: meta.tag.clone(),
                 published_at: Some(meta.installed_at.clone()),
@@ -303,6 +386,8 @@ pub fn merge_remote_and_local_builds(
                 package_size: None,
                 is_installed: true,
                 installed_meta: Some(meta.clone()),
+                launchable,
+                unlaunchable_reason,
             });
         }
     }
@@ -310,31 +395,115 @@ pub fn merge_remote_and_local_builds(
     result
 }
 
-/// 查询远端可用 Horizon 构建并与本地已安装状态合并
-pub async fn fetch_horizon_builds(
-    client: &Client,
-    game_dir: &Path,
-) -> Result<Vec<HorizonBuildItem>, String> {
+/// 对比本地已装构建与远端 nightly 构建，判断是否提示更新（只提示不自动替换）
+pub fn detect_horizon_update(
+    remote: &[GitHubRelease],
+    local: &[PblBuildMeta],
+) -> HorizonUpdateStatus {
+    if local.is_empty() {
+        return HorizonUpdateStatus {
+            has_update: false,
+            latest_tag: None,
+            latest_published_at: None,
+            message: None,
+        };
+    }
+
+    let nightly = remote
+        .iter()
+        .find(|r| r.tag_name == endpoints::HORIZON_NIGHTLY_TAG)
+        .or_else(|| remote.first());
+
+    let Some(latest) = nightly else {
+        return HorizonUpdateStatus {
+            has_update: false,
+            latest_tag: None,
+            latest_published_at: None,
+            message: None,
+        };
+    };
+
+    let max_local_installed_at = local
+        .iter()
+        .map(|m| m.installed_at.as_str())
+        .max()
+        .unwrap_or("");
+
+    let is_newer = match latest.published_at.as_deref() {
+        Some(pub_at) if !pub_at.is_empty() => pub_at > max_local_installed_at,
+        _ => !local.iter().any(|m| m.tag == latest.tag_name),
+    };
+
+    if is_newer {
+        HorizonUpdateStatus {
+            has_update: true,
+            latest_tag: Some(latest.tag_name.clone()),
+            latest_published_at: latest.published_at.clone(),
+            message: Some(
+                "有新构建可用（上游构建仅保留 7 天，已安装构建将在本地保留不受影响）"
+                    .to_string(),
+            ),
+        }
+    } else {
+        HorizonUpdateStatus {
+            has_update: false,
+            latest_tag: Some(latest.tag_name.clone()),
+            latest_published_at: latest.published_at.clone(),
+            message: None,
+        }
+    }
+}
+
+async fn fetch_remote_releases(client: &Client) -> Result<Vec<GitHubRelease>, String> {
     let resp = client
         .get(endpoints::HORIZON_RELEASES_API_URL)
         .header("User-Agent", "PureBuildLauncher")
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
-        .map_err(|e| format!("拉取 Horizon Releases 列表失败: {}", e))?;
+        .map_err(|e| format!("拉取 Horizon Releases 列表失败（请检查网络连接）: {}", e))?;
 
     if !resp.status().is_success() {
         return Err(format!("GitHub Releases API 返回异常状态: {}", resp.status()));
     }
 
-    let releases: Vec<GitHubRelease> = resp
-        .json()
+    resp.json::<Vec<GitHubRelease>>()
         .await
-        .map_err(|e| format!("解析 GitHub Releases JSON 失败: {}", e))?;
+        .map_err(|e| format!("解析 GitHub Releases JSON 失败: {}", e))
+}
+
+/// 查询远端可用 Horizon 构建并与本地已安装状态及健康状态合并
+pub async fn fetch_horizon_builds(
+    client: &Client,
+    game_dir: &Path,
+) -> Result<Vec<HorizonBuildItem>, String> {
+    let releases = fetch_remote_releases(client).await?;
     let local = list_installed_builds(game_dir);
     let pkg_name = platform::horizon_package_name();
+    let health: HashMap<String, (bool, Option<String>)> = local
+        .iter()
+        .map(|m| (m.tag.clone(), validate_installed_build(game_dir, &m.tag)))
+        .collect();
 
-    Ok(merge_remote_and_local_builds(&releases, &local, pkg_name))
+    Ok(merge_remote_and_local_builds(&releases, &local, pkg_name, &health))
+}
+
+/// 检查 Horizon nightly 更新（只对比提示，不自动替换）
+pub async fn check_horizon_update(
+    client: &Client,
+    game_dir: &Path,
+) -> Result<HorizonUpdateStatus, String> {
+    let local = list_installed_builds(game_dir);
+    if local.is_empty() {
+        return Ok(HorizonUpdateStatus {
+            has_update: false,
+            latest_tag: None,
+            latest_published_at: None,
+            message: None,
+        });
+    }
+    let releases = fetch_remote_releases(client).await?;
+    Ok(detect_horizon_update(&releases, &local))
 }
 
 /// 删除指定构建包及其关联预备资源（若有实例绑定该构建则拒绝删除）
@@ -683,14 +852,114 @@ mod tests {
             installed_at: "2026-11-01T00:00:00Z".to_string(),
         }];
 
-        let merged = merge_remote_and_local_builds(&remote, &local, Some("horizon-windows-x64.zip"));
+        let mut health = HashMap::new();
+        health.insert("nightly-2026-11-01".to_string(), (true, None));
+        let merged = merge_remote_and_local_builds(
+            &remote,
+            &local,
+            Some("horizon-windows-x64.zip"),
+            &health,
+        );
         assert_eq!(merged.len(), 2);
         assert_eq!(merged[0].tag, "nightly");
         assert!(!merged[0].is_installed);
+        assert!(!merged[0].launchable);
         assert_eq!(merged[0].package_size, Some(12_345_678));
 
         assert_eq!(merged[1].tag, "nightly-2026-11-01");
         assert!(merged[1].is_installed);
+        assert!(merged[1].launchable);
+    }
+
+    #[test]
+    fn test_classify_negotiation_health_failures() {
+        let valid_client = ClientLaunchApi {
+            launch_api: "0.1.1".to_string(),
+            horizon: "0.1.1".to_string(),
+            minecraft: "26.3".to_string(),
+            options: vec![],
+            exit_codes: vec![0],
+            crash_report_line: None,
+        };
+        let valid_prepare = PrepareLaunchApi {
+            launch_api: "0.1.1".to_string(),
+            horizon: "0.1.1".to_string(),
+            minecraft: "26.3".to_string(),
+            java_major: 25,
+            output_version: Some(1),
+            schema: Some(1),
+            options: vec![],
+            exit_codes: vec![0],
+        };
+
+        assert_eq!(
+            classify_negotiation_health(Ok(valid_client.clone()), Ok(valid_prepare.clone())),
+            (true, None)
+        );
+
+        let (ok_incompat, reason_incompat) = classify_negotiation_health(
+            Err("Launch API 大版本不兼容：期望大版本 0.x，实际构建为 2.0.0".to_string()),
+            Ok(valid_prepare.clone()),
+        );
+        assert!(!ok_incompat);
+        assert!(reason_incompat.unwrap().contains("API 不兼容"));
+
+        let (ok_broken, reason_broken) = classify_negotiation_health(
+            Err("找不到 horizon-client 可执行文件".to_string()),
+            Ok(valid_prepare),
+        );
+        assert!(!ok_broken);
+        assert!(reason_broken.unwrap().contains("构建损坏"));
+    }
+
+    #[test]
+    fn test_detect_horizon_update_cases() {
+        let local_old = vec![PblBuildMeta {
+            tag: "nightly".to_string(),
+            package_name: "horizon-windows-x64.zip".to_string(),
+            sha256: "a".repeat(64),
+            horizon_version: "0.1.0".to_string(),
+            minecraft_version: "26.3".to_string(),
+            launch_api_version: "0.1.0".to_string(),
+            java_major: 25,
+            installed_at: "2026-11-10T00:00:00Z".to_string(),
+        }];
+        let remote_new = vec![GitHubRelease {
+            tag_name: "nightly".to_string(),
+            name: Some("Nightly".to_string()),
+            published_at: Some("2026-11-16T08:00:00Z".to_string()),
+            prerelease: true,
+            assets: vec![],
+        }];
+
+        // 无本地安装时不提示更新
+        assert!(!detect_horizon_update(&remote_new, &[]).has_update);
+
+        // 远端有更新发布时给出提示且附带 7 天保留说明
+        let up = detect_horizon_update(&remote_new, &local_old);
+        assert!(up.has_update);
+        assert_eq!(up.latest_tag.as_deref(), Some("nightly"));
+        assert!(up.message.unwrap().contains("7 天"));
+
+        // 本地安装时间已更新时不重复提示
+        let local_fresh = vec![PblBuildMeta {
+            installed_at: "2026-11-16T10:00:00Z".to_string(),
+            ..local_old[0].clone()
+        }];
+        assert!(!detect_horizon_update(&remote_new, &local_fresh).has_update);
+    }
+
+    #[test]
+    fn test_validate_installed_build_missing_binaries_marks_unlaunchable() {
+        let tmp = std::env::temp_dir().join(format!("pbl_broken_build_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let build_dir = tmp.join("horizon").join("builds").join("nightly");
+        fs::create_dir_all(&build_dir).unwrap();
+        // 故意不放可执行文件，模拟构建损坏
+        let (launchable, reason) = validate_installed_build(&tmp, "nightly");
+        assert!(!launchable);
+        assert!(reason.unwrap().contains("构建损坏"));
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

@@ -11,6 +11,7 @@ import type {
   HorizonBuildItem,
   HorizonCheckResult,
   HorizonInstance,
+  HorizonUpdateStatus,
 } from './types.generated'
 
 export type {
@@ -23,6 +24,7 @@ export type {
   HorizonBuildItem,
   HorizonCheckResult,
   HorizonInstance,
+  HorizonUpdateStatus,
 }
 
 export interface PlatformInfo {
@@ -580,6 +582,23 @@ export const backend = {
 
   async fetchHorizonBuilds(): Promise<HorizonBuildItem[]> {
     return await invoke<HorizonBuildItem[]>('fetch_horizon_builds')
+  },
+
+  async listLocalHorizonBuilds(): Promise<HorizonBuildItem[]> {
+    try {
+      return await invoke<HorizonBuildItem[]>('list_local_horizon_builds')
+    } catch (e) {
+      console.warn('读取本地 Horizon 构建异常:', e)
+      return []
+    }
+  },
+
+  async checkHorizonUpdate(): Promise<HorizonUpdateStatus | null> {
+    try {
+      return await invoke<HorizonUpdateStatus>('check_horizon_update')
+    } catch {
+      return null
+    }
   },
 
   async installHorizonBuild(tag: string): Promise<PblBuildMeta> {

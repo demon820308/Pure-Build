@@ -21,7 +21,9 @@ pub use community::{CommunityManager, ModrinthProject};
 pub use config::{AppConfig, ConfigManager};
 pub use crash::{CrashAnalysisResult, CrashAnalyzer};
 pub use download::{DownloadManager, FabricMetaSummary, LoaderVersionItem, RemoteVersion};
-pub use horizon::{HorizonBuildItem, HorizonCheckResult, HorizonInstance, PblBuildMeta};
+pub use horizon::{
+    HorizonBuildItem, HorizonCheckResult, HorizonInstance, HorizonUpdateStatus, PblBuildMeta,
+};
 pub use installer::{DownloadProgress, VersionInstaller};
 pub use java::{JavaDownloader, JavaInfo, JavaScanner};
 pub use launch::{LaunchProgress, MinecraftLauncher};

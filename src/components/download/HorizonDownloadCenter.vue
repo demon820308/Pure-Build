@@ -80,13 +80,22 @@ const loadBuilds = async () => {
   isLoading.value = true
   loadError.value = ''
   try {
-    const list = await backend.fetchHorizonBuilds()
-    builds.value = list
+    const localBuilds = await backend.listLocalHorizonBuilds()
+    if (localBuilds.length > 0 && builds.value.length === 0) {
+      builds.value = localBuilds
+    }
+    try {
+      const list = await backend.fetchHorizonBuilds()
+      builds.value = list
+      void store.checkHorizonUpdates()
+    } catch (err: any) {
+      builds.value = localBuilds
+      loadError.value = `拉取远端 Horizon 构建失败（已保留本地列表）: ${err}`
+    }
     await Promise.all(
-      list.filter((b) => b.is_installed).map((b) => checkInstalledBuild(b.tag))
+      builds.value.filter((b) => b.is_installed && b.launchable).map((b) => checkInstalledBuild(b.tag))
     )
-  } catch (err: any) {
-    loadError.value = `获取 Horizon 构建列表失败: ${err}`
+    await store.refreshInstalledVersions()
   } finally {
     isLoading.value = false
   }
@@ -222,6 +231,32 @@ defineExpose({
       </MyButton>
     </div>
 
+    <div
+      v-if="store.horizonUpdateStatus?.has_update && store.horizonUpdateStatus.latest_tag"
+      class="px-4 py-2.5 rounded-xl bg-pcl-primary/10 border border-pcl-primary/30 flex items-center justify-between gap-3 shrink-0"
+    >
+      <div class="text-xs text-pcl-text space-y-0.5 min-w-0">
+        <div class="font-semibold text-pcl-primary">
+          有新构建：{{ store.horizonUpdateStatus.latest_tag }}
+          <span v-if="store.horizonUpdateStatus.latest_published_at" class="font-normal text-pcl-subtext ml-1">
+            ({{ formatDate(store.horizonUpdateStatus.latest_published_at) }})
+          </span>
+        </div>
+        <div class="text-pcl-subtext">
+          {{ store.horizonUpdateStatus.message }}
+        </div>
+      </div>
+      <MyButton
+        type="primary"
+        size="small"
+        class="shrink-0"
+        :disabled="store.isDownloading"
+        @click="handleInstallBuild(store.horizonUpdateStatus.latest_tag!)"
+      >
+        安装新构建
+      </MyButton>
+    </div>
+
     <MyHint v-if="loadError" type="error" @close="loadError = ''">
       {{ loadError }}
     </MyHint>
@@ -258,13 +293,24 @@ defineExpose({
                 {{ item.is_installed ? '已安装' : '未安装' }}
               </span>
               <span
-                v-if="item.is_installed"
+                v-if="item.is_installed && !item.launchable"
+                class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/15 text-red-500"
+                :title="item.unlaunchable_reason || '构建损坏或 API 不兼容'"
+              >
+                不可启动
+              </span>
+              <span
+                v-else-if="item.is_installed"
                 class="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 :class="getResourceStatus(item.tag).cls"
                 :title="getResourceStatus(item.tag).title"
               >
                 资源：{{ getResourceStatus(item.tag).label }}
               </span>
+            </div>
+
+            <div v-if="item.is_installed && !item.launchable && item.unlaunchable_reason" class="text-[11px] text-red-500">
+              {{ item.unlaunchable_reason }}
             </div>
 
             <div class="text-xs text-pcl-subtext flex items-center gap-3 flex-wrap">
@@ -281,6 +327,7 @@ defineExpose({
           <div class="flex items-center gap-2 shrink-0 flex-wrap">
             <template v-if="item.is_installed">
               <MyButton
+                v-if="item.launchable"
                 type="secondary"
                 size="small"
                 :loading="preparingTag === item.tag"
@@ -291,6 +338,7 @@ defineExpose({
               </MyButton>
 
               <MyButton
+                v-if="item.launchable"
                 type="primary"
                 size="small"
                 @click="openCreateInstance(item.tag)"

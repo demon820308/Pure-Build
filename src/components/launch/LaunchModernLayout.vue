@@ -34,6 +34,20 @@ const showVersionPicker = ref(false)
 const javaPanelRef = ref<InstanceType<typeof JavaSelectPanel> | null>(null)
 
 const hasLaunchTarget = computed(() => !!store.currentHorizonInstance || !!store.currentVersion)
+const activeHorizonBuild = computed(() => {
+  const inst = store.currentHorizonInstance
+  if (!inst) return null
+  return store.horizonBuilds.find((b) => b.tag === inst.build_tag) || null
+})
+const isHorizonBuildBroken = computed(() => {
+  const inst = store.currentHorizonInstance
+  if (!inst) return false
+  const build = activeHorizonBuild.value
+  return !build || !build.launchable
+})
+const horizonBrokenReason = computed(
+  () => activeHorizonBuild.value?.unlaunchable_reason || '构建损坏或未找到，不可启动'
+)
 const isHorizonAuthBlocked = computed(
   () => !!store.currentHorizonInstance && !isMsaProfile(store.userProfile)
 )
@@ -53,6 +67,14 @@ defineExpose({
   <div class="flex-1 h-full flex flex-col gap-4 overflow-hidden">
     <div class="flex-1 grid grid-cols-12 gap-4 overflow-hidden">
       <div class="col-span-7 flex flex-col gap-3 overflow-y-auto pr-1">
+        <MyHint
+          v-if="isHorizonBuildBroken"
+          type="error"
+          :closable="false"
+        >
+          该 Horizon 构建当前不可启动（{{ horizonBrokenReason }}），请前往下载页重新安装或切换构建。
+        </MyHint>
+
         <MyHint
           v-if="isHorizonAuthBlocked"
           type="info"
@@ -397,14 +419,14 @@ defineExpose({
       </div>
 
       <button
-        :disabled="isLaunching || !hasLaunchTarget || isHorizonAuthBlocked"
+        :disabled="isLaunching || !hasLaunchTarget || isHorizonAuthBlocked || isHorizonBuildBroken"
         class="h-8 px-5 rounded-md text-white text-xs font-medium shadow-xs transition-colors duration-150 active:scale-98 cursor-pointer flex items-center justify-center gap-1.5 select-none disabled:opacity-50 shrink-0"
         :class="
           runningPid
             ? 'bg-emerald-600 hover:bg-emerald-500'
             : 'bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active'
         "
-        :title="isHorizonAuthBlocked ? 'Horizon 需要正版微软账号' : ''"
+        :title="isHorizonBuildBroken ? horizonBrokenReason : isHorizonAuthBlocked ? 'Horizon 需要正版微软账号' : ''"
         @click="emit('launch')"
       >
         <PclIcon v-if="isLaunching" name="refresh" :size="13" class="animate-spin" />
@@ -414,11 +436,13 @@ defineExpose({
           {{
             isLaunching
               ? `启动中 (${launchProgress?.percentage.toFixed(0) || 10}%)`
-              : isHorizonAuthBlocked
-                ? 'Horizon 需要正版微软账号'
-                : runningPid
-                  ? '运行中 (可多开)'
-                  : '启动游戏'
+              : isHorizonBuildBroken
+                ? '构建不可启动'
+                : isHorizonAuthBlocked
+                  ? 'Horizon 需要正版微软账号'
+                  : runningPid
+                    ? '运行中 (可多开)'
+                    : '启动游戏'
           }}
         </span>
       </button>
