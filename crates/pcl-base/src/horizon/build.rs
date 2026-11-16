@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tar::Archive;
 use ts_rs::TS;
 use zip::ZipArchive;
@@ -280,11 +280,33 @@ pub fn classify_negotiation_health(
     }
 }
 
+/// 定位解压后的 Horizon 构建包真实根目录
+/// 上游归档包在压缩层内部包含一层平台目录（如 `horizon-windows-x64/`），保留整包结构不拆散，
+/// 自动识别可执行文件所在目录（直接在 `build_dir` 下或其一级子目录中）
+pub fn resolve_build_root(build_dir: &Path) -> PathBuf {
+    let client_name = platform::horizon_client_bin_name();
+    let prepare_name = platform::horizon_prepare_bin_name();
+    if build_dir.join(client_name).is_file() || build_dir.join(prepare_name).is_file() {
+        return build_dir.to_path_buf();
+    }
+    if let Ok(entries) = fs::read_dir(build_dir) {
+        for entry in entries.flatten() {
+            let sub = entry.path();
+            if sub.is_dir() && (sub.join(client_name).is_file() || sub.join(prepare_name).is_file())
+            {
+                return sub;
+            }
+        }
+    }
+    build_dir.to_path_buf()
+}
+
 /// 检查本地已安装构建的健康与可启动状态（失败返回原因，禁止兜底硬启）
 pub fn validate_installed_build(game_dir: &Path, tag: &str) -> (bool, Option<String>) {
     let build_dir = game_dir.join("horizon").join("builds").join(tag);
-    let client_bin = build_dir.join(platform::horizon_client_bin_name());
-    let prepare_bin = build_dir.join(platform::horizon_prepare_bin_name());
+    let root = resolve_build_root(&build_dir);
+    let client_bin = root.join(platform::horizon_client_bin_name());
+    let prepare_bin = root.join(platform::horizon_prepare_bin_name());
 
     let client_res = negotiate_client_api(&client_bin);
     let prepare_res = negotiate_prepare_api(&prepare_bin);
@@ -911,8 +933,9 @@ pub async fn install_horizon_build(
         error: None,
     });
 
-    let client_bin = target_build_dir.join(platform::horizon_client_bin_name());
-    let prepare_bin = target_build_dir.join(platform::horizon_prepare_bin_name());
+    let build_root = resolve_build_root(&target_build_dir);
+    let client_bin = build_root.join(platform::horizon_client_bin_name());
+    let prepare_bin = build_root.join(platform::horizon_prepare_bin_name());
 
     let client_api_res = negotiate_client_api(&client_bin);
     let prepare_api_res = negotiate_prepare_api(&prepare_bin);
@@ -1225,5 +1248,26 @@ mod tests {
         assert_eq!(parsed_html.assets.len(), 1);
         assert_eq!(parsed_html.assets[0].name, "horizon-windows-x64.zip");
         assert!(parsed_html.assets[0].size > 50_000_000);
+    }
+
+    #[test]
+    fn test_resolve_build_root_handles_nested_package_dir() {
+        let tmp = std::env::temp_dir().join(format!("pbl_build_root_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        let nested = tmp.join("horizon-pkg-dir");
+        fs::create_dir_all(&nested).unwrap();
+
+        let client_bin = nested.join(platform::horizon_client_bin_name());
+        fs::write(&client_bin, b"dummy").unwrap();
+
+        assert_eq!(resolve_build_root(&tmp), nested);
+
+        // 也兼容直接平铺放置在 build_dir 根目录的情况
+        let flat = tmp.join("flat");
+        fs::create_dir_all(&flat).unwrap();
+        fs::write(flat.join(platform::horizon_client_bin_name()), b"dummy").unwrap();
+        assert_eq!(resolve_build_root(&flat), flat);
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

@@ -1,4 +1,5 @@
 use super::api::{negotiate_prepare_api, PrepareLaunchApi};
+use super::build::resolve_build_root;
 use crate::auth::UserProfile;
 use crate::download::DownloadManager;
 use crate::installer::server::download_server_jar;
@@ -109,7 +110,8 @@ pub fn run_prepare_check(prepare_bin: &Path, output_dir: &Path) -> Result<Horizo
 /// 检查指定构建标签的资源准备状态
 pub fn check_build_resources(game_dir: &Path, tag: &str) -> Result<HorizonCheckResult, String> {
     let build_dir = game_dir.join("horizon").join("builds").join(tag);
-    let prepare_bin = build_dir.join(platform::horizon_prepare_bin_name());
+    let build_root = resolve_build_root(&build_dir);
+    let prepare_bin = build_root.join(platform::horizon_prepare_bin_name());
     let resources_dir = game_dir.join("horizon").join("resources").join(tag);
     if !resources_dir.exists() {
         return Ok(HorizonCheckResult {
@@ -317,7 +319,8 @@ pub async fn prepare_build_resources(
     profile: Option<&UserProfile>,
 ) -> Result<(), String> {
     let build_dir = game_dir.join("horizon").join("builds").join(tag);
-    let prepare_bin = build_dir.join(platform::horizon_prepare_bin_name());
+    let build_root = resolve_build_root(&build_dir);
+    let prepare_bin = build_root.join(platform::horizon_prepare_bin_name());
     let resources_dir = game_dir.join("horizon").join("resources").join(tag);
 
     let api = negotiate_prepare_api(&prepare_bin)?;

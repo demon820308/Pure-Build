@@ -1,4 +1,5 @@
 use super::api::{negotiate_client_api, ClientLaunchApi};
+use super::build::resolve_build_root;
 use super::instances::{find_instance, instance_dir};
 use super::prepare::{prepare_build_resources, run_prepare_check};
 use super::session::build_session_bytes;
@@ -331,8 +332,9 @@ pub async fn launch_horizon_instance(
         .join("horizon")
         .join("builds")
         .join(&instance.build_tag);
-    let client_bin = build_dir.join(platform::horizon_client_bin_name());
-    let prepare_bin = build_dir.join(platform::horizon_prepare_bin_name());
+    let build_root = resolve_build_root(&build_dir);
+    let client_bin = build_root.join(platform::horizon_client_bin_name());
+    let prepare_bin = build_root.join(platform::horizon_prepare_bin_name());
     let resources_dir = game_dir
         .join("horizon")
         .join("resources")
