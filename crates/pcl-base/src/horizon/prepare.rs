@@ -2,12 +2,14 @@ use super::api::{negotiate_prepare_api, PrepareLaunchApi};
 use super::build::resolve_build_root;
 use crate::auth::UserProfile;
 use crate::download::DownloadManager;
+use crate::endpoints;
 use crate::installer::server::download_server_jar;
 use crate::installer::{DownloadProgress, VersionInstaller};
 use crate::java::JavaDownloader;
 use crate::platform;
 use crate::reporter::ReporterHandle;
 use serde::{Deserialize, Serialize};
+use sha1::{Digest as _, Sha1};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -304,6 +306,165 @@ fn require_msa_for_mojang_download(profile: Option<&UserProfile>) -> Result<(), 
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ResearchLockFile {
+    minecraft: Option<ResearchLockMinecraft>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResearchLockMinecraft {
+    manifest_sha1: Option<String>,
+    #[serde(default)]
+    accepted_manifest_sha1: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAssetIndexWrapper {
+    #[serde(rename = "assetIndex")]
+    asset_index: Option<RawAssetIndexMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawAssetIndexMeta {
+    id: String,
+    url: String,
+    sha1: Option<String>,
+}
+
+/// 从构建包的 `research-lock.json` 解析受认可的 Mojang 原版清单 SHA-1 列表
+pub fn parse_research_lock_manifest_hashes(json_str: &str) -> Vec<String> {
+    let Ok(lock) = serde_json::from_str::<ResearchLockFile>(json_str) else {
+        return Vec::new();
+    };
+    let Some(mc) = lock.minecraft else {
+        return Vec::new();
+    };
+    let mut hashes = Vec::new();
+    if let Some(primary) = mc.manifest_sha1 {
+        let p = primary.trim().to_lowercase();
+        if !p.is_empty() {
+            hashes.push(p);
+        }
+    }
+    for h in mc.accepted_manifest_sha1 {
+        let lower = h.trim().to_lowercase();
+        if !lower.is_empty() && !hashes.contains(&lower) {
+            hashes.push(lower);
+        }
+    }
+    hashes
+}
+
+fn bytes_sha1_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha1::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn file_sha1_hex(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    Some(bytes_sha1_hex(&bytes))
+}
+
+async fn fetch_raw_mojang_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let client = endpoints::shared_http_client();
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("拉取 Mojang 原始清单失败: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Mojang 原始清单返回 HTTP {}", resp.status()));
+    }
+    resp.bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| format!("读取 Mojang 原始清单流失败: {}", e))
+}
+
+async fn ensure_unmodified_version_json(
+    version_json: &Path,
+    mc_ver: &str,
+    accepted_hashes: &[String],
+    remote_url: Option<&str>,
+) -> Result<(), String> {
+    if accepted_hashes.is_empty() {
+        return Ok(());
+    }
+    if let Some(actual) = file_sha1_hex(version_json) {
+        if accepted_hashes.iter().any(|h| h.eq_ignore_ascii_case(&actual)) {
+            return Ok(());
+        }
+    }
+
+    // 1. 优先尝试从 Mojang 最新清单 URL 拉取未经改写的原始字节
+    if let Some(url) = remote_url {
+        if let Ok(raw_bytes) = fetch_raw_mojang_bytes(url).await {
+            let actual = bytes_sha1_hex(&raw_bytes);
+            if accepted_hashes.iter().any(|h| h.eq_ignore_ascii_case(&actual)) {
+                if let Some(parent) = version_json.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                return std::fs::write(version_json, raw_bytes)
+                    .map_err(|e| format!("写入 Mojang 原始版本 JSON 失败: {}", e));
+            }
+        }
+    }
+
+    // 2. 若镜像/最新清单仍不一致，直接从 research-lock 指定的 Mojang 固定包地址拉取原始版本 JSON
+    for sha in accepted_hashes {
+        let pkg_url = endpoints::mojang_package_json_url(sha, mc_ver);
+        if let Ok(raw_bytes) = fetch_raw_mojang_bytes(&pkg_url).await {
+            let actual = bytes_sha1_hex(&raw_bytes);
+            if actual.eq_ignore_ascii_case(sha) {
+                if let Some(parent) = version_json.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                return std::fs::write(version_json, raw_bytes)
+                    .map_err(|e| format!("写入 Mojang 原始版本 JSON 失败: {}", e));
+            }
+        }
+    }
+
+    Err(format!(
+        "无法获取符合 Horizon 构建校验钉子的 Mojang 原始 {} 版本 JSON",
+        mc_ver
+    ))
+}
+
+async fn ensure_unmodified_asset_index(version_json: &Path, assets_dir: &Path) {
+    let Ok(raw_ver) = std::fs::read_to_string(version_json) else {
+        return;
+    };
+    let Ok(parsed) = serde_json::from_str::<RawAssetIndexWrapper>(&raw_ver) else {
+        return;
+    };
+    let Some(idx_meta) = parsed.asset_index else {
+        return;
+    };
+    let idx_path = assets_dir
+        .join("indexes")
+        .join(format!("{}.json", idx_meta.id));
+    if let (Some(expected), Some(actual)) = (idx_meta.sha1.as_deref(), file_sha1_hex(&idx_path)) {
+        if actual.eq_ignore_ascii_case(expected) {
+            return;
+        }
+    }
+    if let Ok(raw_bytes) = fetch_raw_mojang_bytes(&idx_meta.url).await {
+        let ok = idx_meta
+            .sha1
+            .as_deref()
+            .map(|exp| bytes_sha1_hex(&raw_bytes).eq_ignore_ascii_case(exp))
+            .unwrap_or(true);
+        if ok {
+            if let Some(parent) = idx_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&idx_path, raw_bytes);
+        }
+    }
+}
+
 /// 完整的 Horizon 构建资源准备管线：
 /// 1. 协商 `horizon-prepare --launch-api` 获知所需的 minecraft 钉子与 java_major；
 /// 2. 跑前 `--check` 门禁，若已完整直接返回；
@@ -350,11 +511,20 @@ pub async fn prepare_build_resources(
     let assets_dir = game_dir.join("assets");
     let server_jar = build_dir.join("server.jar");
 
+    let accepted_hashes = std::fs::read_to_string(build_root.join("research-lock.json"))
+        .ok()
+        .map(|s| parse_research_lock_manifest_hashes(&s))
+        .unwrap_or_default();
+    let json_hash_ok = file_sha1_hex(&version_json)
+        .map(|h| accepted_hashes.is_empty() || accepted_hashes.iter().any(|a| a.eq_ignore_ascii_case(&h)))
+        .unwrap_or(false);
+
     let need_vanilla = !version_json.is_file() || !client_jar.is_file();
+    let need_json_repair = !json_hash_ok;
     let need_server = !server_jar.is_file() && api.is_option_supported("--server-jar");
 
     let mut cached_meta_url: Option<String> = None;
-    if need_vanilla || need_server {
+    if need_vanilla || need_json_repair || need_server {
         require_msa_for_mojang_download(profile)?;
         let manifest = DownloadManager::fetch_version_manifest().await?;
         let remote_ver = manifest
@@ -376,6 +546,17 @@ pub async fn prepare_build_resources(
             None,
         )
         .await?;
+    }
+
+    if need_json_repair {
+        ensure_unmodified_version_json(
+            &version_json,
+            mc_ver,
+            &accepted_hashes,
+            cached_meta_url.as_deref(),
+        )
+        .await?;
+        ensure_unmodified_asset_index(&version_json, &assets_dir).await;
     }
 
     if !version_json.is_file() {
@@ -578,5 +759,22 @@ mod tests {
         assert!(corrupt.is_err());
 
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_parse_research_lock_manifest_hashes() {
+        let lock_json = r#"{
+          "minecraft": {
+            "version": "26.3",
+            "manifest_sha1": "AAA111",
+            "accepted_manifest_sha1": ["bbb222", "aaa111", "ccc333"]
+          }
+        }"#;
+        let hashes = parse_research_lock_manifest_hashes(lock_json);
+        assert_eq!(hashes, vec!["aaa111", "bbb222", "ccc333"]);
+        assert_eq!(
+            bytes_sha1_hex(b"hello"),
+            "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
+        );
     }
 }

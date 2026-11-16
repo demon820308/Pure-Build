@@ -113,6 +113,11 @@ pub const MOJANG_RESOURCES: &str = "https://resources.download.minecraft.net";
 pub const MOJANG_VERSION_MANIFEST_V2: &str =
     "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 
+/// 构造 Mojang 官方版本元数据包 URL（保留原始字节 SHA1 一致性）
+pub fn mojang_package_json_url(sha1: &str, version_id: &str) -> String {
+    format!("{}/v1/packages/{}/{}.json", MOJANG_PISTON_META, sha1, version_id)
+}
+
 /// Fabric / Quilt / Forge / NeoForge 官方源基础地址
 pub const FABRIC_META_OFFICIAL: &str = "https://meta.fabricmc.net";
 pub const FABRIC_MAVEN_OFFICIAL: &str = "https://maven.fabricmc.net";

@@ -267,12 +267,18 @@ impl VersionInstaller {
         let mut original_json_val: serde_json::Value = serde_json::from_str(&json_text)
             .map_err(|e| format!("解析版本 JSON 结构失败: {}", e))?;
 
-        original_json_val["id"] = serde_json::Value::String(final_target_name.clone());
-        fs::write(
-            &json_file_path,
-            serde_json::to_string_pretty(&original_json_val).unwrap_or(json_text.clone()),
-        )
-        .map_err(|e| format!("写入 JSON 失败: {}", e))?;
+        // 纯净原版安装保留 Mojang 原始字节落盘，确保与官方清单 SHA-1 一致（供 Horizon 钉子校验）
+        if loader_type.is_none() && final_target_name == vanilla_version {
+            fs::write(&json_file_path, &json_text)
+                .map_err(|e| format!("写入 JSON 失败: {}", e))?;
+        } else {
+            original_json_val["id"] = serde_json::Value::String(final_target_name.clone());
+            fs::write(
+                &json_file_path,
+                serde_json::to_string_pretty(&original_json_val).unwrap_or(json_text.clone()),
+            )
+            .map_err(|e| format!("写入 JSON 失败: {}", e))?;
+        }
 
         let ver_detail: VersionDetailJson = serde_json::from_str(&json_text)
             .map_err(|e| format!("解析版本 JSON 结构失败: {}", e))?;
