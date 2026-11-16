@@ -483,8 +483,20 @@ pub const HORIZON_GITHUB_REPO: &str = "horizon-rust/horizon";
 pub const HORIZON_RELEASES_API_URL: &str =
     "https://api.github.com/repos/horizon-rust/horizon/releases";
 
+/// GitHub Releases Atom 订阅源（无 API 速率限制，用于 403/429 限流回退）
+pub const HORIZON_RELEASES_ATOM_URL: &str =
+    "https://github.com/horizon-rust/horizon/releases.atom";
+
 /// Horizon 默认构建渠道 Tag (Nightly)
 pub const HORIZON_NIGHTLY_TAG: &str = "nightly";
+
+/// 构造指定 Tag 的 GitHub 资产列表页面片段端点（用于免 API 限流探测资产与发布时间）
+pub fn horizon_expanded_assets_url(tag: &str) -> String {
+    format!(
+        "https://github.com/{}/releases/expanded_assets/{}",
+        HORIZON_GITHUB_REPO, tag
+    )
+}
 
 /// 构造 Horizon 发行资源下载链接
 pub fn horizon_release_download_url(tag: &str, filename: &str) -> String {

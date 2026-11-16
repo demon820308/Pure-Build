@@ -10,6 +10,7 @@ use crate::reporter::ReporterHandle;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::{Signature, VerifyingKey};
 use flate2::read::GzDecoder;
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -454,22 +455,170 @@ pub fn detect_horizon_update(
     }
 }
 
+/// 过滤出 Horizon 游戏构建 Release（排除 launcher@、nightly-source/、sdk 等无关 Tag）
+pub fn is_horizon_game_build_tag(tag: &str) -> bool {
+    let t = tag.trim();
+    t == endpoints::HORIZON_NIGHTLY_TAG
+        || (t.starts_with("nightly-") && !t.starts_with("nightly-source"))
+}
+
+fn parse_human_size_to_bytes(size_str: &str) -> u64 {
+    let parts: Vec<&str> = size_str.split_whitespace().collect();
+    if parts.len() != 2 {
+        return 0;
+    }
+    let Ok(val) = parts[0].parse::<f64>() else {
+        return 0;
+    };
+    let mult = match parts[1].to_ascii_uppercase().as_str() {
+        "B" | "BYTES" => 1.0,
+        "KB" => 1024.0,
+        "MB" => 1024.0 * 1024.0,
+        "GB" => 1024.0 * 1024.0 * 1024.0,
+        _ => 1.0,
+    };
+    (val * mult) as u64
+}
+
+/// 从 GitHub expanded_assets HTML 片段解析指定 Tag 的资产清单与发布时间（用于 API 403 限流回退）
+pub fn parse_expanded_assets_html(tag: &str, html: &str) -> Option<GitHubRelease> {
+    let href_re = Regex::new(&format!(
+        r#"href="(/[^/]+/[^/]+/releases/download/{}/([^"]+))""#,
+        regex::escape(tag)
+    ))
+    .ok()?;
+    let size_re = Regex::new(r#">(\d+(?:\.\d+)?\s+(?:Bytes|B|KB|MB|GB))</span>"#).ok()?;
+    let time_re = Regex::new(r#"datetime="([^"]+)""#).ok()?;
+
+    let mut assets = Vec::new();
+    let mut published_at: Option<String> = None;
+
+    for block in html.split("<li ") {
+        let Some(cap) = href_re.captures(block) else {
+            continue;
+        };
+        let rel_path = &cap[1];
+        let name = cap[2].to_string();
+        let size = size_re
+            .captures(block)
+            .map(|s| parse_human_size_to_bytes(&s[1]))
+            .unwrap_or(0);
+        if published_at.is_none() {
+            published_at = time_re.captures(block).map(|t| t[1].to_string());
+        }
+        assets.push(GitHubReleaseAsset {
+            name,
+            size,
+            browser_download_url: format!("https://github.com{}", rel_path),
+        });
+    }
+
+    if assets.is_empty() {
+        return None;
+    }
+
+    Some(GitHubRelease {
+        tag_name: tag.to_string(),
+        name: Some(tag.to_string()),
+        published_at,
+        prerelease: true,
+        assets,
+    })
+}
+
+/// 从 GitHub releases.atom XML 提取 Horizon 游戏构建 Tag 与更新时间
+pub fn parse_releases_atom(xml: &str) -> Vec<GitHubRelease> {
+    let id_re = Regex::new(r#"<id>tag:github\.com,\d+:Repository/\d+/([^<]+)</id>"#).ok();
+    let upd_re = Regex::new(r#"<updated>([^<]+)</updated>"#).ok();
+    let title_re = Regex::new(r#"<title>([^<]+)</title>"#).ok();
+
+    let (Some(id_re), Some(upd_re), Some(title_re)) = (id_re, upd_re, title_re) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for entry in xml.split("<entry>").skip(1) {
+        let Some(tag_cap) = id_re.captures(entry) else {
+            continue;
+        };
+        let tag = tag_cap[1].trim().to_string();
+        if !is_horizon_game_build_tag(&tag) {
+            continue;
+        }
+        let updated = upd_re.captures(entry).map(|c| c[1].trim().to_string());
+        let title = title_re.captures(entry).map(|c| c[1].trim().to_string());
+        out.push(GitHubRelease {
+            tag_name: tag,
+            name: title,
+            published_at: updated,
+            prerelease: true,
+            assets: Vec::new(),
+        });
+    }
+    out
+}
+
+async fn fetch_releases_via_web_fallback(client: &Client) -> Result<Vec<GitHubRelease>, String> {
+    let mut results = Vec::new();
+    let mut seen = HashSet::new();
+
+    // 优先直连探测 nightly 资产片段（即使大量 launcher@ 发布将 nightly 挤出 atom 也能找到）
+    let nightly_url = endpoints::horizon_expanded_assets_url(endpoints::HORIZON_NIGHTLY_TAG);
+    if let Ok(html) = fetch_string(client, &nightly_url).await {
+        if let Some(rel) = parse_expanded_assets_html(endpoints::HORIZON_NIGHTLY_TAG, &html) {
+            seen.insert(rel.tag_name.clone());
+            results.push(rel);
+        }
+    }
+
+    if let Ok(atom_xml) = fetch_string(client, endpoints::HORIZON_RELEASES_ATOM_URL).await {
+        for mut item in parse_releases_atom(&atom_xml) {
+            if seen.contains(&item.tag_name) {
+                continue;
+            }
+            let assets_url = endpoints::horizon_expanded_assets_url(&item.tag_name);
+            if let Ok(html) = fetch_string(client, &assets_url).await {
+                if let Some(enriched) = parse_expanded_assets_html(&item.tag_name, &html) {
+                    item = enriched;
+                }
+            }
+            seen.insert(item.tag_name.clone());
+            results.push(item);
+        }
+    }
+
+    if results.is_empty() {
+        return Err("无法从 GitHub 获取 Horizon 构建列表（请检查网络连接）".to_string());
+    }
+    Ok(results)
+}
+
 async fn fetch_remote_releases(client: &Client) -> Result<Vec<GitHubRelease>, String> {
     let resp = client
         .get(endpoints::HORIZON_RELEASES_API_URL)
         .header("User-Agent", "PureBuildLauncher")
         .header("Accept", "application/vnd.github+json")
         .send()
-        .await
-        .map_err(|e| format!("拉取 Horizon Releases 列表失败（请检查网络连接）: {}", e))?;
+        .await;
 
-    if !resp.status().is_success() {
-        return Err(format!("GitHub Releases API 返回异常状态: {}", resp.status()));
+    match resp {
+        Ok(r) if r.status().is_success() => {
+            let list = r
+                .json::<Vec<GitHubRelease>>()
+                .await
+                .map_err(|e| format!("解析 GitHub Releases JSON 失败: {}", e))?;
+            Ok(list
+                .into_iter()
+                .filter(|rel| is_horizon_game_build_tag(&rel.tag_name))
+                .collect())
+        }
+        Ok(r) if r.status().as_u16() == 403 || r.status().as_u16() == 429 => {
+            // GitHub 未认证 API 触发 IP 限流时自动切换为网页端 Atom/ExpandedAssets 回退路径
+            fetch_releases_via_web_fallback(client).await
+        }
+        Ok(r) => Err(format!("GitHub Releases API 返回异常状态: {}", r.status())),
+        Err(e) => Err(format!("拉取 Horizon Releases 列表失败（请检查网络连接）: {}", e)),
     }
-
-    resp.json::<Vec<GitHubRelease>>()
-        .await
-        .map_err(|e| format!("解析 GitHub Releases JSON 失败: {}", e))
 }
 
 /// 查询远端可用 Horizon 构建并与本地已安装状态及健康状态合并
@@ -995,5 +1144,57 @@ mod tests {
         assert!(!build_dir.exists());
 
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_web_fallback_parsers_and_tag_filtering() {
+        assert!(is_horizon_game_build_tag("nightly"));
+        assert!(is_horizon_game_build_tag("nightly-2026-11-13"));
+        assert!(!is_horizon_game_build_tag("launcher@0.2.69"));
+        assert!(!is_horizon_game_build_tag("nightly-source/2026-11-13-9f42064"));
+
+        let atom_sample = r#"
+        <feed>
+          <entry>
+            <id>tag:github.com,2008:Repository/1403446451/launcher@0.2.69</id>
+            <updated>2026-11-16T00:57:57Z</updated>
+            <title>Horizon launcher 0.2.69</title>
+          </entry>
+          <entry>
+            <id>tag:github.com,2008:Repository/1403446451/nightly-source/2026-11-13-9f42064</id>
+            <updated>2026-11-13T02:39:12Z</updated>
+            <title>nightly-source</title>
+          </entry>
+          <entry>
+            <id>tag:github.com,2008:Repository/1403446451/nightly</id>
+            <updated>2026-11-13T07:47:16Z</updated>
+            <title>Nightly 2026-11-13</title>
+          </entry>
+        </feed>"#;
+        let parsed_atom = parse_releases_atom(atom_sample);
+        assert_eq!(parsed_atom.len(), 1);
+        assert_eq!(parsed_atom[0].tag_name, "nightly");
+        assert_eq!(
+            parsed_atom[0].published_at.as_deref(),
+            Some("2026-11-13T07:47:16Z")
+        );
+
+        let html_sample = r#"
+        <ul>
+          <li class="Box-row">
+            <a href="/horizon-rust/horizon/releases/download/nightly/horizon-windows-x64.zip" rel="nofollow">Win</a>
+            <span class="color-fg-muted">56.5 MB</span>
+            <span><relative-time datetime="2026-11-13T07:47:11Z">2026-11-13</relative-time></span>
+          </li>
+        </ul>"#;
+        let parsed_html = parse_expanded_assets_html("nightly", html_sample).unwrap();
+        assert_eq!(parsed_html.tag_name, "nightly");
+        assert_eq!(
+            parsed_html.published_at.as_deref(),
+            Some("2026-11-13T07:47:11Z")
+        );
+        assert_eq!(parsed_html.assets.len(), 1);
+        assert_eq!(parsed_html.assets[0].name, "horizon-windows-x64.zip");
+        assert!(parsed_html.assets[0].size > 50_000_000);
     }
 }
