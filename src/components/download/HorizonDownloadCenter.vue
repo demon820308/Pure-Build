@@ -285,7 +285,15 @@ defineExpose({
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0 space-y-1">
             <div class="flex items-center gap-2 flex-wrap">
-              <span class="font-semibold text-sm text-pcl-text font-mono">{{ item.tag }}</span>
+              <span class="font-semibold text-sm text-pcl-text font-mono">
+                {{ item.display_name || item.tag }}
+              </span>
+              <span
+                v-if="item.display_name && item.display_name !== item.tag"
+                class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-pcl-primary/10 text-pcl-primary"
+              >
+                {{ item.tag }}
+              </span>
               <span
                 class="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 :class="item.is_installed ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-black/5 dark:bg-white/10 text-pcl-subtext'"

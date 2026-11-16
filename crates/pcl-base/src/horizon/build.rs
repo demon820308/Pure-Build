@@ -43,6 +43,7 @@ pub struct PblBuildMeta {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, TS)]
 pub struct HorizonBuildItem {
     pub tag: String,
+    pub display_name: Option<String>,
     pub published_at: Option<String>,
     pub package_name: Option<String>,
     #[ts(type = "number | null")]
@@ -360,8 +361,18 @@ pub fn merge_remote_and_local_builds(
             (false, None)
         };
         seen_tags.insert(rel.tag_name.clone());
+        let display_name = rel
+            .name
+            .clone()
+            .filter(|n| !n.trim().is_empty())
+            .or_else(|| {
+                local_meta
+                    .as_ref()
+                    .map(|m| format!("Horizon {}", m.horizon_version))
+            });
         result.push(HorizonBuildItem {
             tag: rel.tag_name.clone(),
+            display_name,
             published_at: rel.published_at.clone(),
             package_name: matched_asset
                 .map(|a| a.name.clone())
@@ -382,6 +393,10 @@ pub fn merge_remote_and_local_builds(
                 .unwrap_or((true, None));
             result.push(HorizonBuildItem {
                 tag: meta.tag.clone(),
+                display_name: Some(format!(
+                    "Horizon {} · MC {}",
+                    meta.horizon_version, meta.minecraft_version
+                )),
                 published_at: Some(meta.installed_at.clone()),
                 package_name: Some(meta.package_name.clone()),
                 package_size: None,
@@ -517,9 +532,15 @@ pub fn parse_expanded_assets_html(tag: &str, html: &str) -> Option<GitHubRelease
         return None;
     }
 
+    let inferred_name = Regex::new(r#"nightly-source/(\d{4}-\d{2}-\d{2})-([0-9a-f]+)"#)
+        .ok()
+        .and_then(|re| re.captures(html))
+        .map(|cap| format!("Nightly {} · {}", &cap[1], &cap[2]))
+        .or_else(|| Some(tag.to_string()));
+
     Some(GitHubRelease {
         tag_name: tag.to_string(),
-        name: Some(tag.to_string()),
+        name: inferred_name,
         published_at,
         prerelease: true,
         assets,
@@ -574,6 +595,14 @@ async fn fetch_releases_via_web_fallback(client: &Client) -> Result<Vec<GitHubRe
     if let Ok(atom_xml) = fetch_string(client, endpoints::HORIZON_RELEASES_ATOM_URL).await {
         for mut item in parse_releases_atom(&atom_xml) {
             if seen.contains(&item.tag_name) {
+                if let Some(existing) = results.iter_mut().find(|r| r.tag_name == item.tag_name) {
+                    if item.name.is_some() {
+                        existing.name = item.name;
+                    }
+                    if existing.published_at.is_none() {
+                        existing.published_at = item.published_at;
+                    }
+                }
                 continue;
             }
             let assets_url = endpoints::horizon_expanded_assets_url(&item.tag_name);
