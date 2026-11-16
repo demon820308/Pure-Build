@@ -9,7 +9,7 @@ import PclIcon from '@/components/base/PclIcon.vue'
 import VersionPicker from '@/components/launch/VersionPicker.vue'
 import JavaSelectPanel from '@/components/launch/JavaSelectPanel.vue'
 import type { JavaInfo, LaunchProgress } from '@/services/backend'
-import { isMsaProfile } from '@/utils/coreLogic'
+import { isHorizonMsaBlocked } from '@/utils/coreLogic'
 
 const props = defineProps<{
   selectedJava: JavaInfo | null
@@ -49,7 +49,7 @@ const horizonBrokenReason = computed(
   () => activeHorizonBuild.value?.unlaunchable_reason || '构建损坏或未找到，不可启动'
 )
 const isHorizonAuthBlocked = computed(
-  () => !!store.currentHorizonInstance && !isMsaProfile(store.userProfile)
+  () => !!store.currentHorizonInstance && isHorizonMsaBlocked(store.horizonRequireMsa, store.userProfile)
 )
 const activeTargetLabel = computed(() => {
   if (store.currentHorizonInstance) {

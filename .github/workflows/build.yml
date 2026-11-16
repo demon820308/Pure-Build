@@ -169,8 +169,21 @@ jobs:
           find downloaded-artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} release-assets/ \;
           ls -la release-assets
 
+      - name: Extract Release Notes
+        run: |
+          python3 - << 'EOF'
+          import os, re
+          tag = os.environ.get("GITHUB_REF_NAME", "")
+          with open("CHANGELOG.md", encoding="utf-8") as f:
+              text = f.read()
+          m = re.search(rf"^## \[{re.escape(tag)}\].*?\n(.*?)(?=^## \[|\Z)", text, re.M | re.S)
+          body = m.group(1).strip() if m else "修复 Bug。"
+          with open("release-notes.md", "w", encoding="utf-8") as out:
+              out.write(body + "\n")
+          EOF
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
-          generate_release_notes: true
+          body_path: release-notes.md

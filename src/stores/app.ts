@@ -93,6 +93,7 @@ export const useAppStore = defineStore('app', () => {
     customBgUrl: toRef(config, 'customBgUrl'), bgBlur: toRef(config, 'bgBlur'),
     bgOpacity: toRef(config, 'bgOpacity'), customHomepageNotice: toRef(config, 'customHomepageNotice'),
     uiStyle: toRef(config, 'uiStyle'), hideYggdrasilLogin: toRef(config, 'hideYggdrasilLogin'),
+    horizonRequireMsa: toRef(config, 'horizonRequireMsa'),
     musicDirs: toRef(config, 'musicDirs'), musicVolume: toRef(config, 'musicVolume'),
     musicPlayMode: toRef(config, 'musicPlayMode'), musicAutoPlay: toRef(config, 'musicAutoPlay'),
     musicPauseOnLaunch: toRef(config, 'musicPauseOnLaunch'), musicEqPreset: toRef(config, 'musicEqPreset'),

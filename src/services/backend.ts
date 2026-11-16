@@ -138,6 +138,7 @@ export interface AppConfig {
   custom_homepage_notice?: string
   ui_style?: 'classic' | 'modern'
   hide_yggdrasil_login?: boolean
+  horizon_require_msa?: boolean
   music_dirs?: string[]
   music_volume?: number
   music_play_mode?: 'shuffle' | 'list' | 'single'

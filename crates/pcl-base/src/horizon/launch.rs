@@ -311,17 +311,19 @@ pub async fn launch_horizon_instance(
         });
     };
 
-    emit_progress("正在校验正版微软账号门禁...", 10.0, None, false, None);
+    if cfg.horizon_require_msa {
+        emit_progress("正在校验正版微软账号门禁...", 10.0, None, false, None);
+    } else {
+        emit_progress("正在准备本地测试会话...", 10.0, None, false, None);
+    }
 
-    let active_profile = profile.ok_or_else(|| {
-        let msg = "Horizon 需要正版微软账号，请先登录后再启动".to_string();
-        emit_progress("启动受阻", 0.0, None, true, Some(msg.clone()));
-        msg
-    })?;
-    let session_bytes = build_session_bytes(active_profile, None).map_err(|e| {
-        emit_progress("启动受阻", 0.0, None, true, Some(e.clone()));
-        e
-    })?;
+    let session_bytes =
+        build_session_bytes(profile, &cfg.player_name, None, cfg.horizon_require_msa).map_err(
+            |e| {
+                emit_progress("启动受阻", 0.0, None, true, Some(e.clone()));
+                e
+            },
+        )?;
 
     let instance = find_instance(game_dir, instance_name).ok_or_else(|| {
         let msg = format!("找不到 Horizon 实例「{}」", instance_name);
@@ -373,7 +375,8 @@ pub async fn launch_horizon_instance(
             game_dir,
             &instance.build_tag,
             java_cand,
-            Some(active_profile),
+            profile,
+            cfg.horizon_require_msa,
         )
         .await
         .map_err(|e| {
@@ -553,9 +556,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_launch_horizon_rejects_broken_negotiation_without_fallback() {
-        let tmp = std::env::temp_dir().join(format!("pbl_launch_neg_{}", std::process::id()));
+    fn setup_mock_horizon_instance(dir_prefix: &str, inst_name: &str) -> std::path::PathBuf {
+        let tmp = std::env::temp_dir().join(format!("{}_{}", dir_prefix, std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         let build_dir = tmp.join("horizon").join("builds").join("nightly");
         std::fs::create_dir_all(&build_dir).unwrap();
@@ -574,7 +576,13 @@ mod tests {
             serde_json::to_string(&meta).unwrap(),
         )
         .unwrap();
-        crate::horizon::instances::create_instance(&tmp, "BrokenInst", "nightly").unwrap();
+        crate::horizon::instances::create_instance(&tmp, inst_name, "nightly").unwrap();
+        tmp
+    }
+
+    #[tokio::test]
+    async fn test_launch_horizon_rejects_broken_negotiation_without_fallback() {
+        let tmp = setup_mock_horizon_instance("pbl_launch_neg", "BrokenInst");
 
         let reporter: ReporterHandle = Arc::new(crate::reporter::NoopProgressReporter);
         let cfg = AppConfig::default();
@@ -592,6 +600,31 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.contains("构建不可启动"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_launch_horizon_msa_gate_switch() {
+        let tmp = setup_mock_horizon_instance("pbl_launch_gate", "GateInst");
+
+        let reporter: ReporterHandle = Arc::new(crate::reporter::NoopProgressReporter);
+
+        // 默认开启门禁时，离线状态 (None) 在会话阶段即被拦截
+        let cfg_strict = AppConfig::default();
+        assert!(cfg_strict.horizon_require_msa);
+        let err_strict = launch_horizon_instance(reporter.clone(), &tmp, "GateInst", None, &cfg_strict)
+            .await
+            .unwrap_err();
+        assert!(err_strict.contains("正版微软账号"));
+
+        // 关闭门禁后，离线状态放行并通过会话步骤进入协商阶段
+        let mut cfg_local = AppConfig::default();
+        cfg_local.horizon_require_msa = false;
+        let err_local = launch_horizon_instance(reporter, &tmp, "GateInst", None, &cfg_local)
+            .await
+            .unwrap_err();
+        assert!(err_local.contains("构建不可启动"));
 
         let _ = std::fs::remove_dir_all(&tmp);
     }

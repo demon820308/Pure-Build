@@ -13,6 +13,7 @@
   "custom_homepage_notice": null,
   "ui_style": "classic",
   "hide_yggdrasil_login": true,
+  "horizon_require_msa": true,
   "music_dirs": [],
   "music_volume": 45,
   "music_play_mode": "shuffle",

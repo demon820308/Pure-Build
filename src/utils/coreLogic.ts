@@ -72,6 +72,16 @@ export function isMsaProfile(profile: UserProfile | null | undefined): boolean {
 }
 
 /**
+ * 判断当前是否受 Horizon 微软账号门禁阻断（开启门禁且非正版微软账号时阻断）
+ */
+export function isHorizonMsaBlocked(
+  requireMsa: boolean,
+  profile: UserProfile | null | undefined,
+): boolean {
+  return requireMsa && !isMsaProfile(profile)
+}
+
+/**
  * Horizon 实例修剪决策（纯函数）
  */
 export function pruneHorizonInstance(

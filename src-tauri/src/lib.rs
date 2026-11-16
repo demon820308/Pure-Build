@@ -424,6 +424,7 @@ async fn prepare_horizon_resources(app: AppHandle, tag: String) -> Result<(), St
         &tag,
         java_cand,
         profile.as_ref(),
+        cfg.horizon_require_msa,
     )
     .await
 }

@@ -296,7 +296,13 @@ pub fn execute_prepare(
     }
 }
 
-fn require_msa_for_mojang_download(profile: Option<&UserProfile>) -> Result<(), String> {
+fn require_msa_for_mojang_download(
+    profile: Option<&UserProfile>,
+    require_msa: bool,
+) -> Result<(), String> {
+    if !require_msa {
+        return Ok(());
+    }
     match profile {
         Some(p) if p.auth_type == "msa" && !p.access_token.trim().is_empty() => Ok(()),
         _ => Err(
@@ -468,8 +474,8 @@ async fn ensure_unmodified_asset_index(version_json: &Path, assets_dir: &Path) {
 /// 完整的 Horizon 构建资源准备管线：
 /// 1. 协商 `horizon-prepare --launch-api` 获知所需的 minecraft 钉子与 java_major；
 /// 2. 跑前 `--check` 门禁，若已完整直接返回；
-/// 3. 优先指认 PBL 已管理的 versions/<mc>/、libraries/、assets/，缺失原版文件时走正版门禁并自动安装；
-/// 4. 首次准备且未下载 `server.jar` 时走正版门禁下载至 `<build_dir>/server.jar`；
+/// 3. 优先指认 PBL 已管理的 versions/<mc>/、libraries/、assets/，缺失原版文件时按 `require_msa` 门禁检查并自动安装；
+/// 4. 首次准备且未下载 `server.jar` 时按 `require_msa` 门禁检查下载至 `<build_dir>/server.jar`；
 /// 5. 确保匹配 `java_major` 的 Java 环境并传入 `--java-home`；
 /// 6. 运行 `horizon-prepare --prepare` 并实时上报进度，结束后跑后置 `--check` 门禁。
 pub async fn prepare_build_resources(
@@ -478,6 +484,7 @@ pub async fn prepare_build_resources(
     tag: &str,
     java_candidate: &str,
     profile: Option<&UserProfile>,
+    require_msa: bool,
 ) -> Result<(), String> {
     let build_dir = game_dir.join("horizon").join("builds").join(tag);
     let build_root = resolve_build_root(&build_dir);
@@ -525,7 +532,7 @@ pub async fn prepare_build_resources(
 
     let mut cached_meta_url: Option<String> = None;
     if need_vanilla || need_json_repair || need_server {
-        require_msa_for_mojang_download(profile)?;
+        require_msa_for_mojang_download(profile, require_msa)?;
         let manifest = DownloadManager::fetch_version_manifest().await?;
         let remote_ver = manifest
             .into_iter()
@@ -776,5 +783,22 @@ mod tests {
             bytes_sha1_hex(b"hello"),
             "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
         );
+    }
+
+    #[test]
+    fn test_require_msa_for_mojang_download_respects_gate() {
+        assert!(require_msa_for_mojang_download(None, true).is_err());
+        assert!(require_msa_for_mojang_download(None, false).is_ok());
+
+        let offline = UserProfile {
+            name: "Steve".to_string(),
+            uuid: "0000".to_string(),
+            access_token: "".to_string(),
+            avatar_url: "".to_string(),
+            auth_type: "offline".to_string(),
+            auth_server: None,
+        };
+        assert!(require_msa_for_mojang_download(Some(&offline), true).is_err());
+        assert!(require_msa_for_mojang_download(Some(&offline), false).is_ok());
     }
 }

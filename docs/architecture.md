@@ -1,6 +1,6 @@
 # Pure Build Launcher 架构文档
 
-本文档描述 Pure Build Launcher（版本 `0.1.8`）的分层结构、模块职责、关键数据流与测试体系，覆盖 **原版 - Java** 与 **Horizon - Rust** 双生态启动管线。
+本文档描述 Pure Build Launcher（版本 `0.1.9`）的分层结构、模块职责、关键数据流与测试体系，覆盖 **原版 - Java** 与 **Horizon - Rust** 双生态启动管线。
 
 ---
 

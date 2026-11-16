@@ -2,6 +2,10 @@
 
 本项目遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/) 语义化版本规范。
 
+## [v0.1.9] - 2026-11-16
+
+- 修复 Bug。
+
 ## [v0.1.8] - 2026-11-16
 
 ### Horizon (Rust) 全面适配

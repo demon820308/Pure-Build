@@ -219,6 +219,27 @@ const handleLocalWallpaperFile = (e: Event) => {
 
       <MyCard
         v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'launch'"
+        title="Horizon"
+        subtitle="Horizon 运行模式设置"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="text-xs text-pcl-subtext">
+            默认开启；关闭后允许本地测试使用
+          </div>
+          <label class="flex items-center gap-2 text-xs font-medium text-pcl-text cursor-pointer select-none shrink-0">
+            <input
+              v-model="store.horizonRequireMsa"
+              type="checkbox"
+              class="accent-[var(--pcl-color-primary)] cursor-pointer"
+              @change="store.saveCurrentConfig"
+            />
+            <span>{{ store.horizonRequireMsa ? 'Horizon (默认)' : '允许本地测试使用' }}</span>
+          </label>
+        </div>
+      </MyCard>
+
+      <MyCard
+        v-show="store.uiStyle === 'modern' || setupTab === 'all' || setupTab === 'launch'"
         title="游戏最大运行内存 (Java Heap)"
         subtitle="根据你机器的物理内存配置合理的上限"
       >

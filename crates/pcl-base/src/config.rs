@@ -1,11 +1,11 @@
 use crate::auth::UserProfile;
 use crate::endpoints::{
     CONFIG_FILE_NAME, CREDENTIALS_FILE_NAME, DEFAULT_BG_BLUR, DEFAULT_BG_OPACITY,
-    DEFAULT_HIDE_YGGDRASIL_LOGIN, DEFAULT_MAX_MEMORY_MB, DEFAULT_MUSIC_AUTO_PLAY,
-    DEFAULT_MUSIC_COMPRESSOR, DEFAULT_MUSIC_CROSSFADE, DEFAULT_MUSIC_EQ_PRESET,
-    DEFAULT_MUSIC_PAUSE_ON_LAUNCH, DEFAULT_MUSIC_PLAY_MODE, DEFAULT_MUSIC_VOLUME,
-    DEFAULT_PLAYER_NAME, DEFAULT_THEME_HUE, DEFAULT_UI_STYLE, DEFAULT_WINDOW_HEIGHT,
-    DEFAULT_WINDOW_WIDTH,
+    DEFAULT_HIDE_YGGDRASIL_LOGIN, DEFAULT_HORIZON_REQUIRE_MSA, DEFAULT_MAX_MEMORY_MB,
+    DEFAULT_MUSIC_AUTO_PLAY, DEFAULT_MUSIC_COMPRESSOR, DEFAULT_MUSIC_CROSSFADE,
+    DEFAULT_MUSIC_EQ_PRESET, DEFAULT_MUSIC_PAUSE_ON_LAUNCH, DEFAULT_MUSIC_PLAY_MODE,
+    DEFAULT_MUSIC_VOLUME, DEFAULT_PLAYER_NAME, DEFAULT_THEME_HUE, DEFAULT_UI_STYLE,
+    DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH,
 };
 use crate::platform;
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,10 @@ fn default_ui_style() -> String {
 
 fn default_hide_yggdrasil_login() -> bool {
     DEFAULT_HIDE_YGGDRASIL_LOGIN
+}
+
+fn default_horizon_require_msa() -> bool {
+    DEFAULT_HORIZON_REQUIRE_MSA
 }
 
 fn default_music_volume() -> u32 {
@@ -87,6 +91,8 @@ pub struct AppConfig {
     pub ui_style: String,
     #[serde(default = "default_hide_yggdrasil_login")]
     pub hide_yggdrasil_login: bool,
+    #[serde(default = "default_horizon_require_msa")]
+    pub horizon_require_msa: bool,
     #[serde(default)]
     pub music_dirs: Vec<String>,
     #[serde(default = "default_music_volume")]
@@ -124,6 +130,7 @@ impl Default for AppConfig {
             custom_homepage_notice: None,
             ui_style: default_ui_style(),
             hide_yggdrasil_login: default_hide_yggdrasil_login(),
+            horizon_require_msa: default_horizon_require_msa(),
             music_dirs: Vec::new(),
             music_volume: default_music_volume(),
             music_play_mode: default_music_play_mode(),
@@ -284,8 +291,16 @@ mod tests {
         assert_eq!(cfg.music_volume, 45);
         assert!(cfg.music_compressor);
         assert!(cfg.music_crossfade);
+        assert!(cfg.horizon_require_msa);
         assert_eq!(cfg.music_eq_preset, "flat");
         assert_eq!(cfg.music_eq_custom, vec![0.0, 0.0, 0.0, 0.0, 0.0]);
+
+        let mut custom = AppConfig::default();
+        assert!(custom.horizon_require_msa);
+        custom.horizon_require_msa = false;
+        let roundtrip: AppConfig =
+            serde_json::from_str(&serde_json::to_string(&custom).unwrap()).unwrap();
+        assert!(!roundtrip.horizon_require_msa);
     }
 
     #[test]

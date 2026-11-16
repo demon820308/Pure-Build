@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
 import type { JavaInfo } from '@/services/backend'
-import { isMsaProfile } from '@/utils/coreLogic'
+import { isHorizonMsaBlocked } from '@/utils/coreLogic'
 
 export interface UseLaunchOptions {
   selectedJava: Ref<JavaInfo | null>
@@ -126,7 +126,7 @@ export function useLaunch(options: UseLaunchOptions) {
 
   const handleLaunch = async () => {
     if (store.currentHorizonInstance) {
-      if (!isMsaProfile(store.userProfile)) {
+      if (isHorizonMsaBlocked(store.horizonRequireMsa, store.userProfile)) {
         showLaunchMessage(
           { type: 'info', text: 'Horizon 需要正版微软账号，请先登录后再启动。' },
           6000
@@ -143,6 +143,7 @@ export function useLaunch(options: UseLaunchOptions) {
       }
 
       try {
+        await store.saveCurrentConfig()
         const res = await backend.launchHorizon(store.currentHorizonInstance.name)
         showLaunchMessage({ type: 'success', text: res }, 5000)
       } catch (err: any) {

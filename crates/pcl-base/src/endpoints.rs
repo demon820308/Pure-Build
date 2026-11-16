@@ -30,6 +30,9 @@ pub const DEFAULT_UI_STYLE: &str = "classic";
 /// 默认是否隐藏外置登录入口（默认隐藏 = true）
 pub const DEFAULT_HIDE_YGGDRASIL_LOGIN: bool = true;
 
+/// 默认开启 Horizon 微软正版账号门禁（默认开启 = true；关闭后允许本地离线测试）
+pub const DEFAULT_HORIZON_REQUIRE_MSA: bool = true;
+
 /// 默认背景音乐子目录名（位于 app_config_dir 下）
 pub const DEFAULT_MUSIC_DIR_NAME: &str = "Musics";
 

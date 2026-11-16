@@ -4,6 +4,7 @@ import {
   shouldTriggerFocusReconcile,
   filterExistingTracks,
   isMsaProfile,
+  isHorizonMsaBlocked,
   pruneHorizonInstance,
 } from '../../src/utils/coreLogic'
 import type { HorizonInstance, UserProfile, VersionInfo } from '../../src/services/types.generated'
@@ -127,6 +128,16 @@ describe('coreLogic 核心逻辑纯函数测试', () => {
       expect(isMsaProfile(null)).toBe(false)
       expect(isMsaProfile({ ...msaUser, auth_type: 'yggdrasil' })).toBe(false)
       expect(isMsaProfile({ ...msaUser, access_token: '   ' })).toBe(false)
+    })
+
+    it('门禁开关开启时拦截非正版账号；关闭门禁后允许本地测试放行', () => {
+      expect(isHorizonMsaBlocked(true, msaUser)).toBe(false)
+      expect(isHorizonMsaBlocked(true, null)).toBe(true)
+      expect(isHorizonMsaBlocked(true, { ...msaUser, auth_type: 'offline' })).toBe(true)
+
+      expect(isHorizonMsaBlocked(false, msaUser)).toBe(false)
+      expect(isHorizonMsaBlocked(false, null)).toBe(false)
+      expect(isHorizonMsaBlocked(false, { ...msaUser, auth_type: 'offline' })).toBe(false)
     })
   })
 

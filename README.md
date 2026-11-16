@@ -1,6 +1,6 @@
 # Pure Build Launcher
 
-基于 **Tauri 2 + Vue 3 + TypeScript + Rust (`pcl-base`)** 的跨平台 Minecraft 启动器（版本 `0.1.8`），支持 Windows、macOS（Apple Silicon `arm64` 与 Intel `x86_64`）及 Linux，同时支持 **原版 - Java** 与 **Horizon - Rust** 双游戏生态。
+基于 **Tauri 2 + Vue 3 + TypeScript + Rust (`pcl-base`)** 的跨平台 Minecraft 启动器（版本 `0.1.9`），支持 Windows、macOS（Apple Silicon `arm64` 与 Intel `x86_64`）及 Linux，同时支持 **原版 - Java** 与 **Horizon - Rust** 双游戏生态。
 
 > 详细系统分层、模块职责与数据流请查阅 [架构文档](docs/architecture.md)。
 

@@ -20,6 +20,7 @@ export const useConfigStore = defineStore('config', () => {
   const customHomepageNotice = ref('')
   const uiStyle = ref<'classic' | 'modern'>('classic')
   const hideYggdrasilLogin = ref(true)
+  const horizonRequireMsa = ref(true)
 
   const musicDirs = ref<string[]>([])
   const musicVolume = ref(45)
@@ -58,6 +59,7 @@ export const useConfigStore = defineStore('config', () => {
     customHomepageNotice.value = cfg.custom_homepage_notice || ''
     uiStyle.value = cfg.ui_style === 'modern' ? 'modern' : 'classic'
     hideYggdrasilLogin.value = cfg.hide_yggdrasil_login ?? true
+    horizonRequireMsa.value = cfg.horizon_require_msa ?? true
 
     musicDirs.value = Array.isArray(cfg.music_dirs) ? cfg.music_dirs : []
     musicVolume.value = cfg.music_volume ?? 45
@@ -94,6 +96,7 @@ export const useConfigStore = defineStore('config', () => {
       custom_homepage_notice: customHomepageNotice.value || undefined,
       ui_style: uiStyle.value,
       hide_yggdrasil_login: hideYggdrasilLogin.value,
+      horizon_require_msa: horizonRequireMsa.value,
       music_dirs: musicDirs.value,
       music_volume: musicVolume.value,
       music_play_mode: musicPlayMode.value,
@@ -126,6 +129,7 @@ export const useConfigStore = defineStore('config', () => {
     customHomepageNotice,
     uiStyle,
     hideYggdrasilLogin,
+    horizonRequireMsa,
     musicDirs,
     musicVolume,
     musicPlayMode,
