@@ -6,7 +6,7 @@ use crate::platform;
 use crate::reporter::ReporterHandle;
 use serde::Deserialize;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 struct ServerVersionDetailJson {
@@ -25,17 +25,18 @@ struct ServerDownloadArtifact {
     sha1: Option<String>,
 }
 
-/// 下载并配置 Minecraft 官方服务端（调用 platform::server_script 生成跨平台开服脚本并返回脚本名）
-pub async fn install_server(
-    reporter: ReporterHandle,
-    target_dir: String,
-    version_id: String,
-    meta_url: String,
-) -> Result<String, String> {
+/// 仅下载指定版本的服务端 jar 到目标路径（复用于开服安装与 Horizon 首次准备）
+pub async fn download_server_jar(
+    reporter: &ReporterHandle,
+    progress_id: &str,
+    version_id: &str,
+    meta_url: &str,
+    server_jar_path: &Path,
+) -> Result<(), String> {
     let emit_progress = |step: &str, pct: f32, speed: &str, finished: bool, err: Option<String>| {
         reporter.emit_download(DownloadProgress {
-            version_id: format!("{}-server", version_id),
-            vanilla_version: Some(version_id.clone()),
+            version_id: progress_id.to_string(),
+            vanilla_version: Some(version_id.to_string()),
             step: step.to_string(),
             percentage: pct,
             speed_text: speed.to_string(),
@@ -51,7 +52,7 @@ pub async fn install_server(
     let client = endpoints::shared_http_client();
 
     let (primary_meta_url, backup_meta_url) =
-        endpoints::resolve_mojang_download_urls(&meta_url, prefer_mirror);
+        endpoints::resolve_mojang_download_urls(meta_url, prefer_mirror);
 
     let meta_text = fetch_text_with_fallback(client, &primary_meta_url, &backup_meta_url)
         .await
@@ -74,20 +75,19 @@ pub async fn install_server(
     let (primary_server_url, backup_server_url) =
         endpoints::resolve_mojang_download_urls(&server_art.url, prefer_mirror);
 
-    let target_path = PathBuf::from(&target_dir);
-    if !target_path.exists() {
-        fs::create_dir_all(&target_path).map_err(|e| e.to_string())?;
+    if let Some(parent) = server_jar_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
     }
 
-    let jar_name = format!("{}-server.jar", version_id);
-    let server_jar_path = target_path.join(&jar_name);
     let server_urls = vec![primary_server_url, backup_server_url];
     let mut last_emit_pct = 0.0f32;
 
     download_file_with_retry(
         client,
         &server_urls,
-        &server_jar_path,
+        server_jar_path,
         Some(server_art.size),
         server_art.sha1.as_deref(),
         |downloaded, total| {
@@ -106,10 +106,34 @@ pub async fn install_server(
         },
     )
     .await
-    .map_err(|e| format!("下载服务端核心失败: {}", e))?;
+    .map_err(|e| format!("下载服务端核心失败: {}", e))
+}
 
-    emit_progress("正在生成开服脚本与配置文件...", 90.0, "", false, None);
+/// 下载并配置 Minecraft 官方服务端（调用 platform::server_script 生成跨平台开服脚本并返回脚本名）
+pub async fn install_server(
+    reporter: ReporterHandle,
+    target_dir: String,
+    version_id: String,
+    meta_url: String,
+) -> Result<String, String> {
+    let progress_id = format!("{}-server", version_id);
+    let target_path = PathBuf::from(&target_dir);
+    let jar_name = format!("{}-server.jar", version_id);
+    let server_jar_path = target_path.join(&jar_name);
 
+    download_server_jar(&reporter, &progress_id, &version_id, &meta_url, &server_jar_path).await?;
+
+    reporter.emit_download(DownloadProgress {
+        version_id: progress_id.clone(),
+        vanilla_version: Some(version_id.clone()),
+        step: "正在生成开服脚本与配置文件...".to_string(),
+        percentage: 90.0,
+        speed_text: "".to_string(),
+        is_finished: false,
+        error: None,
+    });
+
+    let cfg = ConfigManager::load();
     let script_name = platform::server_script_with_memory(
         &target_path,
         &version_id,
@@ -120,6 +144,14 @@ pub async fn install_server(
     let eula_content = "#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\neula=true\n";
     let _ = fs::write(target_path.join("eula.txt"), eula_content);
 
-    emit_progress("服务端与启动脚本已准备就绪！", 100.0, "完成", true, None);
+    reporter.emit_download(DownloadProgress {
+        version_id: progress_id,
+        vanilla_version: Some(version_id),
+        step: "服务端与启动脚本已准备就绪！".to_string(),
+        percentage: 100.0,
+        speed_text: "完成".to_string(),
+        is_finished: true,
+        error: None,
+    });
     Ok(script_name)
 }

@@ -474,6 +474,26 @@ pub async fn pace_mirror_request(url: &str) {
     }
 }
 
+// 7. Horizon 上游发行与 API 端点
+
+/// 上游 Horizon 仓库标识
+pub const HORIZON_GITHUB_REPO: &str = "horizon-rust/horizon";
+
+/// GitHub Releases 列表 API 端点
+pub const HORIZON_RELEASES_API_URL: &str =
+    "https://api.github.com/repos/horizon-rust/horizon/releases";
+
+/// Horizon 默认构建渠道 Tag (Nightly)
+pub const HORIZON_NIGHTLY_TAG: &str = "nightly";
+
+/// 构造 Horizon 发行资源下载链接
+pub fn horizon_release_download_url(tag: &str, filename: &str) -> String {
+    format!(
+        "https://github.com/{}/releases/download/{}/{}",
+        HORIZON_GITHUB_REPO, tag, filename
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,3 +17,5 @@ sha2 = "0.10"
 flate2 = "1.0"
 tar = "0.4"
 ts-rs = "10"
+base64 = "0.22"
+ed25519-dalek = { version = "2", default-features = false }

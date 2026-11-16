@@ -627,6 +627,78 @@ pub fn report_startup_error(err_msg: &str) {
     }
 }
 
+/// 将操作系统与架构映射为 Horizon 构建包名（纯函数，入参注入便于跨平台测试）
+/// Windows x64 -> horizon-windows-x64.zip
+/// Windows ARM64 -> horizon-windows-arm64.zip
+/// macOS ARM64 -> horizon-macos-arm64.zip
+/// macOS x64 -> horizon-macos-x64.zip
+/// Linux x86_64 -> horizon-linux-x86_64.tar.gz
+pub fn map_horizon_package_name(raw_os: &str, raw_arch: &str) -> Option<&'static str> {
+    let os = map_mc_os_name(raw_os);
+    let arch = map_mc_os_arch(raw_arch);
+    match (os, arch) {
+        ("windows", "x64") => Some("horizon-windows-x64.zip"),
+        ("windows", "arm64") => Some("horizon-windows-arm64.zip"),
+        ("osx", "arm64") => Some("horizon-macos-arm64.zip"),
+        ("osx", "x64") => Some("horizon-macos-x64.zip"),
+        ("linux", "x64") => Some("horizon-linux-x86_64.tar.gz"),
+        _ => None,
+    }
+}
+
+/// 当前平台对应的 Horizon 构建包文件名
+pub fn horizon_package_name() -> Option<&'static str> {
+    map_horizon_package_name(mc_os_name(), mc_os_arch())
+}
+
+/// 获取指定平台的 horizon-client 可执行文件名
+pub fn horizon_client_bin_name_for(raw_os: &str) -> &'static str {
+    if map_mc_os_name(raw_os) == "windows" {
+        "horizon-client.exe"
+    } else {
+        "horizon-client"
+    }
+}
+
+/// 当前平台的 horizon-client 可执行文件名
+pub fn horizon_client_bin_name() -> &'static str {
+    horizon_client_bin_name_for(mc_os_name())
+}
+
+/// 获取指定平台的 horizon-prepare 可执行文件名
+pub fn horizon_prepare_bin_name_for(raw_os: &str) -> &'static str {
+    if map_mc_os_name(raw_os) == "windows" {
+        "horizon-prepare.exe"
+    } else {
+        "horizon-prepare"
+    }
+}
+
+/// 当前平台的 horizon-prepare 可执行文件名
+pub fn horizon_prepare_bin_name() -> &'static str {
+    horizon_prepare_bin_name_for(mc_os_name())
+}
+
+/// 在 macOS 上解除指定路径的 quarantine 隔离属性；非 macOS 平台直接成功
+pub fn clear_quarantine(path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("xattr")
+            .args(["-dr", "com.apple.quarantine"])
+            .arg(path)
+            .status()
+            .map_err(|e| format!("执行 xattr 失败: {}", e))?;
+        if !status.success() {
+            return Err(format!("xattr 退出码指示错误: {:?}", status.code()));
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,6 +759,39 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn test_horizon_platform_package_and_binaries() {
+        assert_eq!(
+            map_horizon_package_name("windows", "x64"),
+            Some("horizon-windows-x64.zip")
+        );
+        assert_eq!(
+            map_horizon_package_name("windows", "arm64"),
+            Some("horizon-windows-arm64.zip")
+        );
+        assert_eq!(
+            map_horizon_package_name("osx", "arm64"),
+            Some("horizon-macos-arm64.zip")
+        );
+        assert_eq!(
+            map_horizon_package_name("macos", "x64"),
+            Some("horizon-macos-x64.zip")
+        );
+        assert_eq!(
+            map_horizon_package_name("linux", "x64"),
+            Some("horizon-linux-x86_64.tar.gz")
+        );
+        assert_eq!(map_horizon_package_name("linux", "arm64"), None);
+
+        assert_eq!(horizon_client_bin_name_for("windows"), "horizon-client.exe");
+        assert_eq!(horizon_client_bin_name_for("osx"), "horizon-client");
+        assert_eq!(horizon_client_bin_name_for("linux"), "horizon-client");
+
+        assert_eq!(horizon_prepare_bin_name_for("windows"), "horizon-prepare.exe");
+        assert_eq!(horizon_prepare_bin_name_for("osx"), "horizon-prepare");
+        assert_eq!(horizon_prepare_bin_name_for("linux"), "horizon-prepare");
     }
 }
 

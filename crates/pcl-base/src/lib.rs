@@ -4,6 +4,7 @@ pub mod config;
 pub mod crash;
 pub mod download;
 pub mod endpoints;
+pub mod horizon;
 pub mod installer;
 pub mod java;
 pub mod launch;
