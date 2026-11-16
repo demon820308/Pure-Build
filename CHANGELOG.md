@@ -2,6 +2,20 @@
 
 本项目遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/) 语义化版本规范。
 
+## [v0.1.8] - 2026-11-16
+
+### Horizon (Rust) 全面适配
+- **官方 Launch API 与安全分发**：新增 `crates/pcl-base/src/horizon/` 模块群，支持 GitHub Releases 构建获取（含 API 403/429 限流时的 Atom 与 `expanded_assets` 回退）、Ed25519 签名与 SHA256SUMS 校验、嵌套压缩包目录解析，以及 `--launch-api` 动态协商（不硬编码游戏或接口版本号）。
+- **资源准备与原版 JSON 自修复**：集成 `horizon-prepare` 自动准备与启动前/后 `--check` 门禁；保留未经二次格式化的 Mojang 原始版本 JSON，并在检测到已被重写导致 SHA-1 不一致时自动从官方元数据恢复。
+- **正版门禁与进程托管**：强制微软正版账号校验，内存组装会话并通过 `--session-stdin` 零落盘写入；废弃未消费的 stdout 管道以消除客户端阻塞，支持退出码分类与崩溃报告分析。
+- **Horizon 官方扩展仓库**：接入 `horizon-mods` 索引与本地缓存，支持按构建协商能力过滤兼容项，经过 SHA-256 校验安装 `.hshader` 原生光影、`.hmod` 内容模组（自动更新 `horizon-mods.txt`）与材质包，并将需本地源码重编的 `.hnmod` 独立归入「原生重编类」标签提示。
+
+### 下载中心与版本管理重构
+- **双生态分类隔离**：下载页在经典与现代布局中彻底分家为「原版 - Java」与「Horizon - Rust」两大生态域。
+- **Java 版本安全删除与动作收敛**：重构原版列表与 Horizon 构建卡片交互为「主按钮 + 次按钮 + `⋯` 更多菜单」，补齐 Java 本地版本安全删除（含边界校验与隔离存档提醒）。
+- **目标实例选择与已安装状态**：为原版 Modrinth 浏览与 Horizon 扩展仓库均加入独立目标实例选择器，自动识别独立隔离目录与公共共享目录，实时展示「已安装」标识。
+- **文档完善**：更新 `README.md` 并新增 `docs/architecture.md` 项目架构文档。
+
 ## [v0.1.7] - 2026-11-06
 
 ### 界面交互与质感升级
