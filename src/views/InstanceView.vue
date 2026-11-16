@@ -10,6 +10,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 
 const store = useAppStore()
 
+const isHorizonInstance = computed(() => !!store.currentHorizonInstance)
 const activeTab = ref<'mods' | 'shaderpacks' | 'resourcepacks' | 'saves'>('mods')
 
 const mods = ref<ModInfo[]>([])
@@ -21,6 +22,15 @@ const isImporting = ref(false)
 const searchQuery = ref('')
 
 const loadData = async () => {
+  if (store.currentHorizonInstance) {
+    isLoading.value = true
+    try {
+      saves.value = await backend.getHorizonInstanceSaves(store.currentHorizonInstance.name)
+    } finally {
+      isLoading.value = false
+    }
+    return
+  }
   if (!store.currentVersion) return
   isLoading.value = true
   try {
@@ -38,11 +48,21 @@ const loadData = async () => {
   }
 }
 
-watch([() => store.currentVersion, activeTab, () => store.instanceRefreshTrigger], () => {
-  loadData()
-})
+watch(
+  [() => store.currentVersion, () => store.currentHorizonInstance, activeTab, () => store.instanceRefreshTrigger],
+  () => {
+    if (isHorizonInstance.value && activeTab.value !== 'saves') {
+      activeTab.value = 'saves'
+      return
+    }
+    loadData()
+  }
+)
 
 onMounted(() => {
+  if (isHorizonInstance.value) {
+    activeTab.value = 'saves'
+  }
   loadData()
 })
 
@@ -122,12 +142,33 @@ const toggleResource = async (item: ResourceItem) => {
 }
 
 const openCurrentFolder = async () => {
+  if (store.currentHorizonInstance) {
+    try {
+      await backend.openHorizonInstanceFolder(store.currentHorizonInstance.name, 'saves')
+    } catch (err: any) {
+      alert(`打开目录失败: ${err}`)
+    }
+    return
+  }
   if (!store.currentVersion) return
   if (!await store.validateTargetExists(store.currentVersion.path, `版本【${store.currentVersion.name || store.currentVersion.id}】`)) return
   try {
     await backend.openInstanceFolder(store.currentVersion.path, store.gameDir, activeTab.value)
   } catch (err: any) {
     alert(`打开目录失败: ${err}`)
+  }
+}
+
+const handleDeleteHorizonInstance = async () => {
+  const inst = store.currentHorizonInstance
+  if (!inst) return
+  if (!confirm(`确定删除 Horizon 实例「${inst.name}」及其存档与配置吗？`)) return
+  try {
+    await backend.deleteHorizonInstance(inst.name)
+    await store.refreshInstalledVersions()
+    store.showNotification(`已删除 Horizon 实例「${inst.name}」`)
+  } catch (err: any) {
+    alert(`删除实例失败: ${err}`)
   }
 }
 
@@ -192,6 +233,7 @@ const handleExportModpack = async () => {
       class="w-[152px] h-full bg-white dark:bg-[#1e232b] border-r border-black/8 dark:border-white/10 pt-3 flex flex-col shrink-0 select-none"
     >
       <MyListItem
+        v-if="!isHorizonInstance"
         :title="`Mod 管理 (${mods.length})`"
         icon="mod"
         :checked="activeTab === 'mods'"
@@ -208,6 +250,7 @@ const handleExportModpack = async () => {
         @action="loadData"
       />
       <MyListItem
+        v-if="!isHorizonInstance"
         :title="`资源包 (${resourcePacks.length})`"
         icon="resourcepack"
         :checked="activeTab === 'resourcepacks'"
@@ -216,6 +259,7 @@ const handleExportModpack = async () => {
         @action="loadData"
       />
       <MyListItem
+        v-if="!isHorizonInstance"
         :title="`光影包 (${shaders.length})`"
         icon="shader"
         :checked="activeTab === 'shaderpacks'"
@@ -223,20 +267,22 @@ const handleExportModpack = async () => {
         @click="activeTab = 'shaderpacks'"
         @action="loadData"
       />
-      <div class="px-3.5 pt-4 pb-1 text-[12px] text-[#737373] opacity-80">
-        整合包操作
-      </div>
-      <MyListItem
-        title="导入 .mrpack"
-        icon="download"
-        @click="handleImportModpack"
-      />
-      <MyListItem
-        v-if="store.currentVersion"
-        title="导出整合包"
-        icon="modpack"
-        @click="handleExportModpack"
-      />
+      <template v-if="!isHorizonInstance">
+        <div class="px-3.5 pt-4 pb-1 text-[12px] text-[#737373] opacity-80">
+          整合包操作
+        </div>
+        <MyListItem
+          title="导入 .mrpack"
+          icon="download"
+          @click="handleImportModpack"
+        />
+        <MyListItem
+          v-if="store.currentVersion"
+          title="导出整合包"
+          icon="modpack"
+          @click="handleExportModpack"
+        />
+      </template>
     </div>
 
     <div
@@ -246,35 +292,55 @@ const handleExportModpack = async () => {
     <div class="flex items-center justify-between gap-4 shrink-0">
       <div class="flex items-center gap-3">
         <div class="w-9 h-9 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-pcl-primary flex items-center justify-center shrink-0">
-          <PclIcon name="instance" :size="18" />
+          <PclIcon :name="isHorizonInstance ? 'launch' : 'instance'" :size="18" />
         </div>
         <div>
           <h2 class="text-sm font-semibold text-pcl-text flex items-center gap-2">
-            <span>{{ store.currentVersion?.name || '未选择版本' }}</span>
-            <span class="text-xs bg-black/5 dark:bg-white/10 text-pcl-subtext px-1.5 py-0.2 rounded font-mono">
+            <span>{{ store.currentHorizonInstance?.name || store.currentVersion?.name || '未选择版本' }}</span>
+            <span
+              v-if="store.currentHorizonInstance"
+              class="text-xs bg-pcl-primary/15 text-pcl-primary px-1.5 py-0.2 rounded font-mono"
+            >
+              Horizon · {{ store.currentHorizonInstance.build_tag }}
+            </span>
+            <span
+              v-else
+              class="text-xs bg-black/5 dark:bg-white/10 text-pcl-subtext px-1.5 py-0.2 rounded font-mono"
+            >
               {{ store.currentVersion?.loader || 'Vanilla' }}
             </span>
           </h2>
           <p class="text-xs text-pcl-subtext mt-0.5">
-            版本内容管理、存档查看与整合包导入/导出中心
+            {{ isHorizonInstance ? 'Horizon 独立实例世界存档管理' : '版本内容管理、存档查看与整合包导入/导出中心' }}
           </p>
         </div>
       </div>
 
       <div class="flex items-center gap-2">
-        <MyButton type="secondary" size="small" :loading="isImporting" @click="handleImportModpack">
-          <PclIcon name="download" :size="12" class="mr-1" />
-          导入整合包 (.mrpack)
+        <MyButton
+          v-if="store.currentHorizonInstance"
+          type="danger"
+          size="small"
+          @click="handleDeleteHorizonInstance"
+        >
+          删除实例
         </MyButton>
-        <MyButton v-if="store.currentVersion" type="secondary" size="small" @click="handleExportModpack">
-          导出整合包
-        </MyButton>
+        <template v-else>
+          <MyButton type="secondary" size="small" :loading="isImporting" @click="handleImportModpack">
+            <PclIcon name="download" :size="12" class="mr-1" />
+            导入整合包 (.mrpack)
+          </MyButton>
+          <MyButton v-if="store.currentVersion" type="secondary" size="small" @click="handleExportModpack">
+            导出整合包
+          </MyButton>
+        </template>
       </div>
     </div>
 
     <div class="flex items-center justify-between gap-3 shrink-0 flex-wrap">
       <div class="flex items-center p-1 rounded-lg bg-black/5 dark:bg-white/5 border border-pcl-border text-xs shrink-0 whitespace-nowrap">
         <button
+          v-if="!isHorizonInstance"
           class="px-2.5 py-1 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1"
           :class="activeTab === 'mods' ? 'bg-pcl-card text-pcl-text font-medium shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="activeTab = 'mods'"
@@ -283,6 +349,7 @@ const handleExportModpack = async () => {
           <span>模组 ({{ mods.length }})</span>
         </button>
         <button
+          v-if="!isHorizonInstance"
           class="px-2.5 py-1 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1"
           :class="activeTab === 'shaderpacks' ? 'bg-pcl-card text-pcl-text font-medium shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="activeTab = 'shaderpacks'"
@@ -291,6 +358,7 @@ const handleExportModpack = async () => {
           <span>光影 ({{ shaders.length }})</span>
         </button>
         <button
+          v-if="!isHorizonInstance"
           class="px-2.5 py-1 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1"
           :class="activeTab === 'resourcepacks' ? 'bg-pcl-card text-pcl-text font-medium shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
           @click="activeTab = 'resourcepacks'"

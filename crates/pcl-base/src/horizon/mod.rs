@@ -16,7 +16,8 @@ pub use build::{
     PblBuildMeta, HORIZON_RELEASE_PUBLIC_KEY_B64,
 };
 pub use instances::{
-    create_instance, delete_instance, find_instance, instance_dir, list_instances, HorizonInstance,
+    create_instance, delete_instance, find_instance, instance_dir, list_instances,
+    validate_instance_name, HorizonInstance,
 };
 pub use launch::{
     build_client_launch_args, launch_client_process, launch_horizon_instance,

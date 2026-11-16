@@ -618,4 +618,17 @@ export const backend = {
   async launchHorizon(instanceName: string): Promise<string> {
     return await invoke<string>('launch_horizon', { instanceName })
   },
+
+  async getHorizonInstanceSaves(instanceName: string): Promise<SaveInfo[]> {
+    try {
+      return await invoke<SaveInfo[]>('get_horizon_instance_saves', { instanceName })
+    } catch (e) {
+      console.warn('获取 Horizon 存档列表异常:', e)
+      return []
+    }
+  },
+
+  async openHorizonInstanceFolder(instanceName: string, folderName?: string): Promise<void> {
+    await invoke('open_horizon_instance_folder', { instanceName, folderName: folderName ?? null })
+  },
 }

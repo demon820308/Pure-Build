@@ -3,8 +3,10 @@ import {
   pruneSelectedVersion,
   shouldTriggerFocusReconcile,
   filterExistingTracks,
+  isMsaProfile,
+  pruneHorizonInstance,
 } from '../../src/utils/coreLogic'
-import type { VersionInfo } from '../../src/services/types.generated'
+import type { HorizonInstance, UserProfile, VersionInfo } from '../../src/services/types.generated'
 import type { MusicTrack } from '../../src/services/backend'
 
 describe('coreLogic 核心逻辑纯函数测试', () => {
@@ -107,6 +109,39 @@ describe('coreLogic 核心逻辑纯函数测试', () => {
     it('若传入不存在的路径，列表保持不变', () => {
       const filtered = filterExistingTracks(tracks, '/music/not_found.mp3')
       expect(filtered).toHaveLength(3)
+    })
+  })
+
+  describe('4. Horizon 微软正版账号门禁 (isMsaProfile)', () => {
+    const msaUser: UserProfile = {
+      name: 'Alex',
+      uuid: '069a79f444e94726a5befca90e38aaf5',
+      access_token: 'tok_123',
+      avatar_url: '',
+      auth_type: 'msa',
+      auth_server: null,
+    }
+
+    it('仅正版微软账号且令牌非空时放行', () => {
+      expect(isMsaProfile(msaUser)).toBe(true)
+      expect(isMsaProfile(null)).toBe(false)
+      expect(isMsaProfile({ ...msaUser, auth_type: 'yggdrasil' })).toBe(false)
+      expect(isMsaProfile({ ...msaUser, access_token: '   ' })).toBe(false)
+    })
+  })
+
+  describe('5. Horizon 实例修剪 (pruneHorizonInstance)', () => {
+    const instA: HorizonInstance = {
+      name: 'Survival',
+      build_tag: 'nightly',
+      created_at: '2026-11-16T00:00:00Z',
+    }
+
+    it('实例仍在列表中时保持选中；被删除时置 null 并提示', () => {
+      expect(pruneHorizonInstance(instA, [instA]).nextInstance).toEqual(instA)
+      const removed = pruneHorizonInstance(instA, [])
+      expect(removed.nextInstance).toBeNull()
+      expect(removed.notice).toContain('Survival')
     })
   })
 })

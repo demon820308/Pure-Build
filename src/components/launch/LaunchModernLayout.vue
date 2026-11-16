@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
 import MyCard from '@/components/base/MyCard.vue'
@@ -9,6 +9,7 @@ import PclIcon from '@/components/base/PclIcon.vue'
 import VersionPicker from '@/components/launch/VersionPicker.vue'
 import JavaSelectPanel from '@/components/launch/JavaSelectPanel.vue'
 import type { JavaInfo, LaunchProgress } from '@/services/backend'
+import { isMsaProfile } from '@/utils/coreLogic'
 
 const props = defineProps<{
   selectedJava: JavaInfo | null
@@ -32,6 +33,17 @@ const store = useAppStore()
 const showVersionPicker = ref(false)
 const javaPanelRef = ref<InstanceType<typeof JavaSelectPanel> | null>(null)
 
+const hasLaunchTarget = computed(() => !!store.currentHorizonInstance || !!store.currentVersion)
+const isHorizonAuthBlocked = computed(
+  () => !!store.currentHorizonInstance && !isMsaProfile(store.userProfile)
+)
+const activeTargetLabel = computed(() => {
+  if (store.currentHorizonInstance) {
+    return `Horizon · ${store.currentHorizonInstance.name}`
+  }
+  return store.currentVersion?.name || ''
+})
+
 defineExpose({
   scanJavaRuntime: () => javaPanelRef.value?.scanJavaRuntime(),
 })
@@ -41,6 +53,14 @@ defineExpose({
   <div class="flex-1 h-full flex flex-col gap-4 overflow-hidden">
     <div class="flex-1 grid grid-cols-12 gap-4 overflow-hidden">
       <div class="col-span-7 flex flex-col gap-3 overflow-y-auto pr-1">
+        <MyHint
+          v-if="isHorizonAuthBlocked"
+          type="info"
+          :closable="false"
+        >
+          Horizon 需要正版微软账号：当前为离线或外置登录状态，请点击右侧「微软登录」完成后再启动。
+        </MyHint>
+
         <MyHint
           v-if="launchMessage"
           :type="launchMessage.type"
@@ -86,7 +106,7 @@ defineExpose({
 
         <MyCard
           title="当前游戏实例"
-          :subtitle="`已扫描到 ${store.installedVersions.length} 个本地客户端`"
+          :subtitle="`已扫描 ${store.installedVersions.length} 个 Java 版本 · ${store.horizonInstances.length} 个 Horizon 实例`"
           :can-collapse="false"
         >
           <template #extra>
@@ -97,7 +117,51 @@ defineExpose({
           </template>
 
           <div
-            v-if="store.currentVersion"
+            v-if="store.currentHorizonInstance"
+            class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-black/5 dark:bg-black/25 border border-pcl-primary/30"
+          >
+            <div class="flex items-center gap-3 overflow-hidden pr-2">
+              <div class="w-9 h-9 rounded-lg bg-pcl-primary/10 border border-pcl-primary/30 text-pcl-primary flex items-center justify-center shrink-0">
+                <PclIcon name="launch" :size="18" />
+              </div>
+              <div class="truncate">
+                <div class="font-semibold text-sm text-pcl-text flex items-center gap-2 truncate">
+                  <span class="truncate">{{ store.currentHorizonInstance.name }}</span>
+                  <span class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-pcl-primary/15 text-pcl-primary shrink-0">
+                    Horizon
+                  </span>
+                </div>
+                <div class="text-xs text-pcl-subtext mt-0.5 flex items-center gap-2">
+                  <span class="bg-black/5 dark:bg-white/10 text-pcl-text px-1.5 py-0.2 rounded font-mono text-[11px]">
+                    {{ store.currentHorizonInstance.build_tag }}
+                  </span>
+                  <span class="truncate">独立实例目录</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-1.5 shrink-0">
+              <MyButton
+                type="secondary"
+                size="small"
+                title="查看该 Horizon 实例的世界存档"
+                @click="store.currentTab = 'instance'"
+              >
+                <PclIcon name="gear" :size="12" class="mr-1" />
+                实例管理
+              </MyButton>
+              <MyButton
+                type="primary"
+                size="small"
+                @click="showVersionPicker = !showVersionPicker"
+              >
+                {{ showVersionPicker ? '收起列表' : '切换实例' }}
+              </MyButton>
+            </div>
+          </div>
+
+          <div
+            v-else-if="store.currentVersion"
             class="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-black/5 dark:bg-black/25 border border-pcl-border"
           >
             <div class="flex items-center gap-3 overflow-hidden pr-2">
@@ -306,12 +370,21 @@ defineExpose({
 
       <div v-else class="flex items-center gap-2 text-xs overflow-hidden">
         <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/5 dark:bg-black/25 border border-pcl-border truncate text-pcl-subtext">
-          <PclIcon name="instance" :size="12" />
+          <PclIcon :name="store.currentHorizonInstance ? 'launch' : 'instance'" :size="12" />
           <span class="font-medium text-pcl-text truncate max-w-[180px]">
-            {{ store.currentVersion?.name || '未选择实例' }}
+            {{ activeTargetLabel || '未选择实例' }}
           </span>
         </div>
-        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/5 dark:bg-black/25 border border-pcl-border text-pcl-subtext shrink-0">
+        <div
+          v-if="store.currentHorizonInstance"
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-pcl-primary/10 border border-pcl-primary/30 text-pcl-primary shrink-0"
+        >
+          <span class="font-mono">{{ store.currentHorizonInstance.build_tag }}</span>
+        </div>
+        <div
+          v-else
+          class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/5 dark:bg-black/25 border border-pcl-border text-pcl-subtext shrink-0"
+        >
           <PclIcon name="gear" :size="12" />
           <span class="font-mono">{{ selectedJava ? `Java ${selectedJava.version} (${selectedJava.arch || '64-Bit'})` : '未检测 Java' }}</span>
         </div>
@@ -324,13 +397,14 @@ defineExpose({
       </div>
 
       <button
-        :disabled="isLaunching || !store.currentVersion"
+        :disabled="isLaunching || !hasLaunchTarget || isHorizonAuthBlocked"
         class="h-8 px-5 rounded-md text-white text-xs font-medium shadow-xs transition-colors duration-150 active:scale-98 cursor-pointer flex items-center justify-center gap-1.5 select-none disabled:opacity-50 shrink-0"
         :class="
           runningPid
             ? 'bg-emerald-600 hover:bg-emerald-500'
             : 'bg-pcl-primary hover:bg-pcl-hover active:bg-pcl-active'
         "
+        :title="isHorizonAuthBlocked ? 'Horizon 需要正版微软账号' : ''"
         @click="emit('launch')"
       >
         <PclIcon v-if="isLaunching" name="refresh" :size="13" class="animate-spin" />
@@ -340,9 +414,11 @@ defineExpose({
           {{
             isLaunching
               ? `启动中 (${launchProgress?.percentage.toFixed(0) || 10}%)`
-              : runningPid
-                ? '运行中 (可多开)'
-                : '启动游戏'
+              : isHorizonAuthBlocked
+                ? 'Horizon 需要正版微软账号'
+                : runningPid
+                  ? '运行中 (可多开)'
+                  : '启动游戏'
           }}
         </span>
       </button>

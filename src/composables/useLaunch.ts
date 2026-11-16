@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useAppStore } from '@/stores/app'
 import { backend } from '@/services/backend'
 import type { JavaInfo } from '@/services/backend'
+import { isMsaProfile } from '@/utils/coreLogic'
 
 export interface UseLaunchOptions {
   selectedJava: Ref<JavaInfo | null>
@@ -124,8 +125,37 @@ export function useLaunch(options: UseLaunchOptions) {
   }
 
   const handleLaunch = async () => {
+    if (store.currentHorizonInstance) {
+      if (!isMsaProfile(store.userProfile)) {
+        showLaunchMessage(
+          { type: 'info', text: 'Horizon 需要正版微软账号，请先登录后再启动。' },
+          6000
+        )
+        return
+      }
+
+      isLaunching.value = true
+      showLaunchMessage(null)
+      launchProgress.value = {
+        step: '正在启动 Horizon 实例...',
+        percentage: 5,
+        is_finished: false,
+      }
+
+      try {
+        const res = await backend.launchHorizon(store.currentHorizonInstance.name)
+        showLaunchMessage({ type: 'success', text: res }, 5000)
+      } catch (err: any) {
+        showLaunchMessage({ type: 'error', text: `启动失败: ${err}` }, 8000)
+        store.resetGameState()
+      } finally {
+        isLaunching.value = false
+      }
+      return
+    }
+
     if (!store.currentVersion) {
-      alert('请先选择一个 Minecraft 版本！')
+      alert('请先选择一个游戏版本或 Horizon 实例！')
       return
     }
     const versionExists = await store.validateTargetExists(

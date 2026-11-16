@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAppStore } from '@/stores/app'
 import MyCard from '@/components/base/MyCard.vue'
 import MyButton from '@/components/base/MyButton.vue'
@@ -8,6 +8,7 @@ import PclIcon from '@/components/base/PclIcon.vue'
 import VersionPicker from '@/components/launch/VersionPicker.vue'
 import JavaSelectPanel from '@/components/launch/JavaSelectPanel.vue'
 import type { JavaInfo, LaunchProgress } from '@/services/backend'
+import { isMsaProfile } from '@/utils/coreLogic'
 
 const props = defineProps<{
   selectedJava: JavaInfo | null
@@ -28,6 +29,17 @@ const emit = defineEmits<{
 const store = useAppStore()
 const showVersionPicker = ref(false)
 const javaPanelRef = ref<InstanceType<typeof JavaSelectPanel> | null>(null)
+
+const hasLaunchTarget = computed(() => !!store.currentHorizonInstance || !!store.currentVersion)
+const isHorizonAuthBlocked = computed(
+  () => !!store.currentHorizonInstance && !isMsaProfile(store.userProfile)
+)
+const activeTargetLabel = computed(() => {
+  if (store.currentHorizonInstance) {
+    return `Horizon · ${store.currentHorizonInstance.name}`
+  }
+  return store.currentVersion?.name || ''
+})
 
 defineExpose({
   scanJavaRuntime: () => javaPanelRef.value?.scanJavaRuntime(),
@@ -125,31 +137,36 @@ defineExpose({
       <!-- 底部：54px 双行「启动游戏」主按钮 + 版本选择框 + 35x35 齿轮按钮 -->
       <div class="space-y-2.5">
         <button
-          :disabled="!store.currentVersion"
+          :disabled="!hasLaunchTarget || isHorizonAuthBlocked"
           class="w-full h-[54px] rounded-[4px] border border-[var(--pcl-brush-3)] bg-[var(--pcl-brush-8)] hover:bg-[var(--pcl-brush-6)] active:scale-[0.99] transition-all flex flex-col items-center justify-center cursor-pointer disabled:opacity-50"
+          :title="isHorizonAuthBlocked ? 'Horizon 需要正版微软账号' : ''"
           @click="emit('launch')"
         >
           <span class="text-[15px] font-bold text-[var(--pcl-brush-2)] leading-tight">
-            启动游戏
+            {{ isHorizonAuthBlocked ? '需正版微软账号' : '启动游戏' }}
           </span>
           <span class="text-[11px] text-[#737373] truncate max-w-[230px] mt-0.5">
-            {{ store.currentVersion ? store.currentVersion.name : '未检测到游戏版本，请先下载' }}
+            {{
+              isHorizonAuthBlocked
+                ? 'Horizon 需要正版微软账号'
+                : activeTargetLabel || '未检测到游戏版本，请先下载'
+            }}
           </span>
         </button>
 
         <div class="flex items-center gap-2">
           <button
             class="flex-1 h-[35px] px-3 rounded-[4px] border border-black/25 hover:border-[var(--pcl-brush-3)] bg-white text-[12.5px] text-[var(--pcl-brush-1)] flex items-center justify-between cursor-pointer transition-colors"
-            title="直接切换要启动的 Minecraft 版本"
+            title="直接切换要启动的 Minecraft 版本或 Horizon 实例"
             @click="showVersionPicker = !showVersionPicker"
           >
-            <span class="truncate">{{ store.currentVersion?.name || '选择版本...' }}</span>
+            <span class="truncate">{{ activeTargetLabel || '选择版本...' }}</span>
             <span class="text-[10px] text-[#8c8c8c] ml-1">▲</span>
           </button>
 
           <button
             class="w-[35px] h-[35px] rounded-[4px] border border-black/25 hover:border-[var(--pcl-brush-3)] hover:text-[var(--pcl-brush-3)] bg-white text-[var(--pcl-brush-1)] flex items-center justify-center cursor-pointer transition-colors shrink-0"
-            title="版本管理与设置（Mod / 存档 / 整合包管理）"
+            title="实例与存档管理"
             @click="store.currentTab = 'instance'"
           >
             <PclIcon name="gear" :size="17" />
@@ -178,7 +195,7 @@ defineExpose({
           class="text-[13.5px] text-[var(--pcl-brush-3)] mt-1 truncate max-w-[240px]"
           style="transform: skewX(-3deg)"
         >
-          {{ store.currentVersion?.name }}
+          {{ activeTargetLabel }}
         </div>
 
         <div class="w-full h-[4px] bg-[var(--pcl-brush-6)] my-4 overflow-hidden rounded-xs">
@@ -226,6 +243,14 @@ defineExpose({
 
   <div class="flex-1 h-full overflow-y-auto p-5 space-y-3.5">
     <MyHint
+      v-if="isHorizonAuthBlocked"
+      type="info"
+      :closable="false"
+    >
+      Horizon 需要正版微软账号：当前为离线或外置登录状态，请点击左侧「正版」登录后启动。
+    </MyHint>
+
+    <MyHint
       v-if="launchMessage"
       :type="launchMessage.type"
       @close="emit('closeMessage')"
@@ -240,7 +265,7 @@ defineExpose({
       <div class="text-xs text-pcl-text whitespace-pre-wrap leading-relaxed">
         {{
           store.customHomepageNotice ||
-          `当前工作目录：${store.gameDir}\n已扫描到本地版本：${store.installedVersions.length} 个 | 可用 Java 运行时：${javaPanelRef?.javaList.length || 0} 个。\n点击左侧面板底部的齿轮按钮可进入单版本 Mod、存档与整合包管理。`
+          `当前工作目录：${store.gameDir}\n已扫描到本地版本：${store.installedVersions.length} 个 | Horizon 实例：${store.horizonInstances.length} 个 | 可用 Java：${javaPanelRef?.javaList.length || 0} 个。\n点击左侧面板底部的齿轮按钮可进入实例管理与存档浏览。`
         }}
       </div>
     </MyCard>

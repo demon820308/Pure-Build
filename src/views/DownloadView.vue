@@ -7,13 +7,15 @@ import type { RemoteVersion } from '@/services/backend'
 import PclIcon from '@/components/base/PclIcon.vue'
 
 import GameVersionCenter from '@/components/download/GameVersionCenter.vue'
+import HorizonDownloadCenter from '@/components/download/HorizonDownloadCenter.vue'
 import InstallConfigPanel from '@/components/download/InstallConfigPanel.vue'
 import ModrinthBrowser from '@/components/download/ModrinthBrowser.vue'
 import ChangelogModal from '@/components/download/ChangelogModal.vue'
 
 const store = useAppStore()
 
-const currentSection = ref<'game' | 'mod' | 'modpack' | 'shader' | 'resourcepack'>('game')
+const currentSection = ref<'game' | 'horizon' | 'mod' | 'modpack' | 'shader' | 'resourcepack'>('game')
+const horizonCenterRef = ref<InstanceType<typeof HorizonDownloadCenter> | null>(null)
 
 const versions = ref<RemoteVersion[]>([])
 const isLoadingVersions = ref(false)
@@ -89,6 +91,14 @@ onMounted(() => {
         @click="currentSection = 'game'; configuringVersion = null"
         @action="loadRemoteVersions"
       />
+      <MyListItem
+        title="Horizon"
+        icon="launch"
+        :checked="currentSection === 'horizon'"
+        action-title="刷新 Horizon 构建"
+        @click="currentSection = 'horizon'; configuringVersion = null"
+        @action="horizonCenterRef?.loadBuilds()"
+      />
 
       <div class="px-3.5 pt-5 pb-1 text-[12px] text-[#737373] opacity-80">
         社区资源
@@ -148,6 +158,15 @@ onMounted(() => {
 
           <button
             class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            :class="currentSection === 'horizon' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
+            @click="currentSection = 'horizon'"
+          >
+            <PclIcon name="launch" :size="13" />
+            <span>Horizon</span>
+          </button>
+
+          <button
+            class="px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
             :class="currentSection === 'mod' ? 'bg-pcl-primary text-white shadow-xs' : 'text-pcl-subtext hover:text-pcl-text'"
             @click="currentSection = 'mod'"
           >
@@ -185,7 +204,14 @@ onMounted(() => {
 
         <div class="text-xs text-pcl-subtext flex items-center gap-2 shrink-0 whitespace-nowrap min-w-0">
           <span
-            v-if="store.currentVersion"
+            v-if="store.currentHorizonInstance"
+            class="px-2 py-0.5 rounded-md bg-pcl-primary/10 text-pcl-primary font-mono text-[11px] max-w-[150px] truncate shrink-0"
+            :title="`当前 Horizon 实例: ${store.currentHorizonInstance.name}`"
+          >
+            Horizon · {{ store.currentHorizonInstance.name }}
+          </span>
+          <span
+            v-else-if="store.currentVersion"
             class="px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 font-mono text-[11px] max-w-[150px] truncate shrink-0"
             :title="`当前版本: ${store.currentVersion.name}`"
           >
@@ -214,6 +240,11 @@ onMounted(() => {
           @show-changelog="(v) => changelogModalVersion = v"
         />
       </template>
+
+      <HorizonDownloadCenter
+        v-else-if="currentSection === 'horizon'"
+        ref="horizonCenterRef"
+      />
 
       <ModrinthBrowser
         v-else

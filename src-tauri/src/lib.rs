@@ -455,6 +455,34 @@ async fn launch_horizon(app: AppHandle, instance_name: String) -> Result<String,
 }
 
 #[tauri::command]
+async fn get_horizon_instance_saves(instance_name: String) -> Vec<SaveInfo> {
+    let game_dir = current_game_dir();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(clean_name) = horizon::validate_instance_name(&instance_name) else {
+            return Vec::new();
+        };
+        let inst_dir = horizon::instance_dir(&game_dir, &clean_name);
+        ResourceScanner::scan_saves(&inst_dir, &inst_dir)
+    })
+    .await
+    .unwrap_or_default()
+}
+
+#[tauri::command]
+fn open_horizon_instance_folder(
+    instance_name: String,
+    folder_name: Option<String>,
+) -> Result<(), String> {
+    let clean_name = horizon::validate_instance_name(&instance_name)?;
+    let mut target = horizon::instance_dir(&current_game_dir(), &clean_name);
+    if let Some(folder) = folder_name {
+        let clean_folder = horizon::validate_instance_name(&folder)?;
+        target = target.join(clean_folder);
+    }
+    platform::open_folder(&target)
+}
+
+#[tauri::command]
 async fn scan_lan_rooms() -> Result<Vec<LanRoomInfo>, String> {
     LinkManager::scan_lan_rooms(1500).await
 }
@@ -601,6 +629,8 @@ pub fn run() {
             create_horizon_instance,
             delete_horizon_instance,
             launch_horizon,
+            get_horizon_instance_saves,
+            open_horizon_instance_folder,
             scan_lan_rooms,
             broadcast_lan_room,
             decode_lan_invite_code,

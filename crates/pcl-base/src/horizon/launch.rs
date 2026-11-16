@@ -159,6 +159,7 @@ pub fn launch_client_process(
     }
 
     let prefix_str = crash_line_prefix.to_string();
+    let inst_dir_buf = instance_dir.to_path_buf();
     let reporter_handle = reporter.clone();
 
     // 后台监控线程
@@ -215,6 +216,14 @@ pub fn launch_client_process(
                 report_path,
                 log_snippet,
             } => {
+                let resolved_report = report_path.map(|rp| {
+                    let p = Path::new(&rp);
+                    if p.is_absolute() {
+                        rp
+                    } else {
+                        inst_dir_buf.join(p).to_string_lossy().to_string()
+                    }
+                });
                 reporter_handle.emit_crash(CrashAnalysisResult {
                     exit_code: Some(exit_code),
                     title: if exit_code == 101 {
@@ -225,7 +234,7 @@ pub fn launch_client_process(
                     reason: "原生游戏进程终止".to_string(),
                     suggestion: "请查看崩溃日志获取具体堆栈。".to_string(),
                     log_snippet,
-                    report_file: report_path,
+                    report_file: resolved_report,
                 });
                 reporter_handle.emit_exit(exit_code);
             }

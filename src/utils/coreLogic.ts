@@ -1,4 +1,4 @@
-import type { VersionInfo } from '../services/types.generated'
+import type { HorizonInstance, UserProfile, VersionInfo } from '../services/types.generated'
 import type { MusicTrack } from '../services/backend'
 
 export interface PruneVersionResult {
@@ -62,4 +62,31 @@ export function filterExistingTracks(
   invalidPath: string,
 ): MusicTrack[] {
   return tracks.filter((t) => t.path !== invalidPath)
+}
+
+/**
+ * 校验当前账号是否为微软正版授权账号（Horizon 启动所有权门禁）
+ */
+export function isMsaProfile(profile: UserProfile | null | undefined): boolean {
+  return !!profile && profile.auth_type === 'msa' && profile.access_token.trim().length > 0
+}
+
+/**
+ * Horizon 实例修剪决策（纯函数）
+ */
+export function pruneHorizonInstance(
+  current: HorizonInstance | null,
+  availableList: HorizonInstance[],
+): { nextInstance: HorizonInstance | null; notice?: string } {
+  if (!current) {
+    return { nextInstance: null }
+  }
+  const existing = availableList.find((inst) => inst.name === current.name)
+  if (existing) {
+    return { nextInstance: existing }
+  }
+  return {
+    nextInstance: null,
+    notice: `已检测到 Horizon 实例【${current.name}】已被移除`,
+  }
 }
